@@ -27,7 +27,7 @@
 
 ## 🚀 Quick Start
 
-### Linux/Mac - One-Line Install
+### Linux - One-Line Install
 
 ```bash
 # User installation (recommended, no sudo required)
@@ -157,7 +157,7 @@ blacksmith install development --skip-installed
 blacksmith uninstall
 
 # Or using the uninstall script
-# Linux/Mac:
+# Linux:
 curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/uninstall.sh | bash
 
 # Windows:
@@ -206,6 +206,19 @@ packages:
 
 Blacksmith automatically detects which package managers are available on your system and uses the appropriate one for each tool.
 
+## 🍎 macOS Support (Future)
+
+macOS support is planned for a future release. While the codebase includes some macOS compatibility (OS detection, install scripts), full support is not yet available.
+
+**Planned features for macOS:**
+
+- Homebrew package manager integration
+- MacPorts support (optional)
+- Native macOS package installation workflows
+- Full compatibility with macOS-specific tool installations
+
+If you're interested in contributing macOS support, please check out our [Contributing](#-contributing) section or open an issue to discuss!
+
 ## 🎨 Pre-made Sets
 
 ### Development
@@ -240,6 +253,9 @@ venv\Scripts\activate
 
 # Install in development mode
 pip install -e .
+
+# Install development dependencies (for testing and code quality)
+pip install pytest pytest-cov pytest-mock ruff black mypy yamllint
 ```
 
 ### Project Structure
@@ -262,21 +278,134 @@ blacksmith/
 
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
+### Getting Started
+
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Clone your fork: `git clone https://github.com/your-username/blacksmith.git`
+3. Create a feature branch: `git checkout -b feature/AmazingFeature`
+4. Set up your development environment (see the [Development](#️-development) section above)
+
+### Development Workflow
+
+1. Make your changes
+2. Run tests locally (see [Testing](#testing) below)
+3. Ensure code quality checks pass (see [Code Quality](#code-quality) below)
+4. Commit your changes: `git commit -m 'Add some AmazingFeature'`
+5. Push to your fork: `git push origin feature/AmazingFeature`
+6. Open a Pull Request
+
+### Testing
+
+Before submitting a PR, please ensure all tests pass:
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov pytest-mock
+
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=blacksmith --cov-report=term
+
+# Run specific test file
+pytest tests/test_cli.py -v
+```
+
+### Code Quality
+
+We use several tools to maintain code quality. Please ensure your code passes these checks:
+
+```bash
+# Install development dependencies
+pip install ruff black mypy yamllint
+
+# Linting (check for errors)
+ruff check blacksmith/
+
+# Formatting (check if code is formatted)
+ruff format --check blacksmith/
+
+# Auto-fix linting issues
+ruff check --fix blacksmith/
+
+# Auto-format code
+ruff format blacksmith/
+
+# Type checking
+mypy blacksmith/ --ignore-missing-imports
+
+# YAML linting
+yamllint blacksmith/sets/*.yaml
+```
+
+### Adding New Package Managers
+
+To add support for a new package manager:
+
+1. Create a new file in `blacksmith/package_managers/` (e.g., `brew.py`)
+2. Inherit from `PackageManager` base class in `blacksmith/package_managers/base.py`
+3. Implement required methods:
+   - `is_available()` - Check if the package manager is installed
+   - `install(packages)` - Install packages
+   - `is_installed(package)` - Check if a package is installed
+   - `search(query)` - Search for packages
+4. Register it in `blacksmith/package_managers/detector.py`
+5. Add tests in `tests/test_package_managers.py`
+
+### Adding New Tool Sets
+
+To add a new pre-made tool set:
+
+1. Create a new YAML file in `blacksmith/sets/` (e.g., `gaming.yaml`)
+2. Follow the existing format (see `blacksmith/sets/development.yaml` for reference)
+3. Include package names for all supported package managers
+4. Ensure YAML syntax is valid: `yamllint blacksmith/sets/gaming.yaml`
+5. Test loading the set: `blacksmith list` should show your new set
+
+### Reporting Bugs
+
+When reporting bugs, please include:
+
+- Operating system and version
+- Python version
+- Blacksmith version (`blacksmith --version`)
+- Steps to reproduce
+- Expected vs actual behavior
+- Error messages or logs (if applicable)
+
+### Feature Requests
+
+For feature requests, please:
+
+- Open an issue describing the feature
+- Explain the use case and benefits
+- Discuss implementation approach (if you have ideas)
+- Consider contributing the feature yourself!
+
+### Code Style Guidelines
+
+- Follow PEP 8 style guide
+- Use type hints where possible
+- Write docstrings for all functions and classes
+- Keep functions focused and small
+- Add comments for complex logic
+- Use meaningful variable and function names
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
 ## 👤 Author
 
 **jimididit**
 
 - GitHub: [@jimididit](https://github.com/jimididit)
+- Instagram: [@jimididit](https://instagram.com/jimi.did.it)
+- YouTube: [@jimididit](https://youtube.com/@jimididit)
+- TikTok: [@jimididit](https://tiktok.com/@jimi.did.it)
+- Website: [www.jimididit.com](https://jimididit.com)
+- Discord: [NØKTURNAL COMMUNITY](https://jimididit.com/discord)
 
 ## 🙏 Acknowledgments
 
