@@ -1,5 +1,5 @@
 name: "Minimal Setup"
-description: "Lightweight setup with just the essentials"
+description: "Lightweight setup with just the absolute essentials"
 packages:
   - name: git
     managers:
@@ -27,4 +27,12 @@ packages:
       winget: vim.vim
       chocolatey: vim
       scoop: vim
-
+  
+  - name: wget
+    managers:
+      apt: wget
+      pacman: wget
+      yum: wget
+      winget: GNU.Wget
+      chocolatey: wget
+      scoop: wget

@@ -1,6 +1,7 @@
 name: "Development Tools"
-description: "Essential development tools for software development"
+description: "Comprehensive development environment with essential tools, languages, and IDEs"
 packages:
+  # Version Control
   - name: git
     managers:
       apt: git
@@ -10,31 +11,37 @@ packages:
       chocolatey: git
       scoop: git
   
-  - name: docker
-    managers:
-      apt: docker.io
-      pacman: docker
-      yum: docker
-      winget: Docker.DockerDesktop
-      chocolatey: docker-desktop
-  
+  # Code Editors & IDEs
   - name: vscode
     managers:
       apt: code
       pacman: code
       yum: code
       snap: code
+      flatpak: com.visualstudio.Code
       winget: Microsoft.VisualStudioCode
       chocolatey: vscode
       scoop: vscode
   
+  - name: vim
+    managers:
+      apt: vim
+      pacman: vim
+      yum: vim
+      winget: vim.vim
+      chocolatey: vim
+      scoop: vim
+  
+  # Programming Languages
   - name: python
     managers:
       apt: python3
       pacman: python
       yum: python3
+      snap: python38
       winget: Python.Python.3.12
       chocolatey: python
+      scoop: python
   
   - name: nodejs
     managers:
@@ -46,6 +53,105 @@ packages:
       chocolatey: nodejs
       scoop: nodejs
   
+  - name: go
+    managers:
+      apt: golang-go
+      pacman: go
+      yum: golang
+      snap: go
+      winget: GoLang.Go
+      chocolatey: golang
+      scoop: go
+  
+  - name: rust
+    managers:
+      apt: rustc
+      pacman: rust
+      yum: rust
+      winget: Rustlang.Rustup
+      chocolatey: rust
+      scoop: rust
+  
+  # Build Tools & Package Managers
+  - name: make
+    managers:
+      apt: build-essential
+      pacman: base-devel
+      yum: gcc
+      winget: GnuWin32.Make
+      chocolatey: make
+      scoop: make
+  
+  - name: cmake
+    managers:
+      apt: cmake
+      pacman: cmake
+      yum: cmake
+      winget: Kitware.CMake
+      chocolatey: cmake
+      scoop: cmake
+  
+  - name: pip
+    managers:
+      apt: python3-pip
+      pacman: python-pip
+      yum: python3-pip
+      winget: Python.Python.3.12
+      chocolatey: pip
+  
+  - name: npm
+    managers:
+      apt: npm
+      pacman: npm
+      yum: npm
+      snap: node
+      winget: OpenJS.NodeJS
+      chocolatey: nodejs
+      scoop: nodejs
+  
+  # Container & Virtualization
+  - name: docker
+    managers:
+      apt: docker.io
+      pacman: docker
+      yum: docker
+      snap: docker
+      winget: Docker.DockerDesktop
+      chocolatey: docker-desktop
+      scoop: docker
+  
+  - name: docker-compose
+    managers:
+      apt: docker-compose
+      pacman: docker-compose
+      yum: docker-compose
+      snap: docker
+      winget: Docker.DockerDesktop
+      chocolatey: docker-desktop
+      scoop: docker-compose
+  
+  # Database Tools
+  - name: postgresql
+    managers:
+      apt: postgresql
+      pacman: postgresql
+      yum: postgresql-server
+      snap: postgresql
+      winget: PostgreSQL.PostgreSQL
+      chocolatey: postgresql
+      scoop: postgresql
+  
+  - name: mysql
+    managers:
+      apt: mysql-server
+      pacman: mysql
+      yum: mysql-server
+      snap: mysql
+      winget: Oracle.MySQL
+      chocolatey: mysql
+      scoop: mysql
+  
+  # Network Tools
   - name: curl
     managers:
       apt: curl
@@ -54,4 +160,68 @@ packages:
       winget: cURL.cURL
       chocolatey: curl
       scoop: curl
-
+  
+  - name: wget
+    managers:
+      apt: wget
+      pacman: wget
+      yum: wget
+      winget: GNU.Wget
+      chocolatey: wget
+      scoop: wget
+  
+  - name: openssh
+    managers:
+      apt: openssh-client
+      pacman: openssh
+      yum: openssh-clients
+      winget: Microsoft.OpenSSH.Beta
+      chocolatey: openssh
+      scoop: openssh
+  
+  # Testing & Quality Tools
+  - name: jq
+    managers:
+      apt: jq
+      pacman: jq
+      yum: jq
+      winget: stedolan.jq
+      chocolatey: jq
+      scoop: jq
+  
+  - name: htop
+    managers:
+      apt: htop
+      pacman: htop
+      yum: htop
+      winget: htop.htop
+      chocolatey: htop
+      scoop: htop
+  
+  # Additional Development Tools
+  - name: tmux
+    managers:
+      apt: tmux
+      pacman: tmux
+      yum: tmux
+      winget: tmux.tmux
+      chocolatey: tmux
+      scoop: tmux
+  
+  - name: zsh
+    managers:
+      apt: zsh
+      pacman: zsh
+      yum: zsh
+      winget: GnuWin32.Zsh
+      chocolatey: zsh
+      scoop: zsh
+  
+  - name: tree
+    managers:
+      apt: tree
+      pacman: tree
+      yum: tree
+      winget: tree.tree
+      chocolatey: tree
+      scoop: tree

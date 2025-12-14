@@ -1,6 +1,7 @@
 name: "Cybersecurity Tools"
-description: "Security and penetration testing tools"
+description: "Comprehensive security and penetration testing toolkit"
 packages:
+  # Network Scanning & Analysis
   - name: nmap
     managers:
       apt: nmap
@@ -15,10 +16,27 @@ packages:
       apt: wireshark
       pacman: wireshark
       yum: wireshark
+      snap: wireshark
       winget: WiresharkFoundation.Wireshark
       chocolatey: wireshark
       scoop: wireshark
   
+  - name: tcpdump
+    managers:
+      apt: tcpdump
+      pacman: tcpdump
+      yum: tcpdump
+      chocolatey: tcpdump
+  
+  - name: netcat
+    managers:
+      apt: netcat
+      pacman: gnu-netcat
+      yum: nc
+      chocolatey: netcat
+      scoop: netcat
+  
+  # Penetration Testing Frameworks
   - name: metasploit
     managers:
       apt: metasploit-framework
@@ -31,13 +49,24 @@ packages:
       apt: burpsuite
       pacman: burpsuite
       chocolatey: burp-suite-free-edition
+      scoop: burp-suite
   
+  - name: sqlmap
+    managers:
+      apt: sqlmap
+      pacman: sqlmap
+      yum: sqlmap
+      chocolatey: sqlmap
+      scoop: sqlmap
+  
+  # Password Cracking
   - name: john
     managers:
       apt: john
       pacman: john
       yum: john
       chocolatey: john
+      scoop: john-the-ripper
   
   - name: hashcat
     managers:
@@ -45,11 +74,148 @@ packages:
       pacman: hashcat
       yum: hashcat
       chocolatey: hashcat
+      scoop: hashcat
   
+  # Wireless Security
   - name: aircrack-ng
     managers:
       apt: aircrack-ng
       pacman: aircrack-ng
       yum: aircrack-ng
       chocolatey: aircrack-ng
-
+      scoop: aircrack-ng
+  
+  # Web Application Security
+  - name: nikto
+    managers:
+      apt: nikto
+      pacman: nikto
+      yum: nikto
+      chocolatey: nikto
+  
+  - name: dirb
+    managers:
+      apt: dirb
+      pacman: dirb
+      yum: dirb
+      chocolatey: dirb
+  
+  - name: gobuster
+    managers:
+      apt: gobuster
+      pacman: gobuster
+      yum: gobuster
+      chocolatey: gobuster
+      scoop: gobuster
+  
+  # Vulnerability Scanners
+  - name: openvas
+    managers:
+      apt: openvas
+      pacman: openvas
+      yum: openvas
+  
+  - name: lynis
+    managers:
+      apt: lynis
+      pacman: lynis
+      yum: lynis
+      chocolatey: lynis
+  
+  # Network Tools
+  - name: netdiscover
+    managers:
+      apt: netdiscover
+      pacman: netdiscover
+      yum: netdiscover
+  
+  - name: masscan
+    managers:
+      apt: masscan
+      pacman: masscan
+      yum: masscan
+      chocolatey: masscan
+  
+  # SSL/TLS Tools
+  - name: sslscan
+    managers:
+      apt: sslscan
+      pacman: sslscan
+      yum: sslscan
+      chocolatey: sslscan
+  
+  - name: testssl
+    managers:
+      apt: testssl.sh
+      pacman: testssl.sh
+      chocolatey: testssl
+  
+  # Forensic Tools
+  - name: volatility
+    managers:
+      apt: volatility
+      pacman: volatility3
+      chocolatey: volatility
+  
+  - name: binwalk
+    managers:
+      apt: binwalk
+      pacman: binwalk
+      yum: binwalk
+      chocolatey: binwalk
+  
+  # Reverse Engineering
+  - name: ghidra
+    managers:
+      apt: ghidra
+      pacman: ghidra
+      chocolatey: ghidra
+      scoop: ghidra
+  
+  - name: radare2
+    managers:
+      apt: radare2
+      pacman: radare2
+      yum: radare2
+      chocolatey: radare2
+      scoop: radare2
+  
+  # Social Engineering
+  - name: social-engineer-toolkit
+    managers:
+      apt: set
+      pacman: set
+      chocolatey: set
+  
+  # Additional Security Tools
+  - name: hydra
+    managers:
+      apt: hydra
+      pacman: hydra
+      yum: hydra
+      chocolatey: hydra
+  
+  - name: enum4linux
+    managers:
+      apt: enum4linux
+      pacman: enum4linux
+      chocolatey: enum4linux
+  
+  - name: smbclient
+    managers:
+      apt: smbclient
+      pacman: smbclient
+      yum: samba-client
+      chocolatey: samba
+  
+  - name: impacket
+    managers:
+      apt: python3-impacket
+      pacman: impacket
+      chocolatey: impacket
+  
+  - name: responder
+    managers:
+      apt: responder
+      pacman: responder
+      chocolatey: responder
