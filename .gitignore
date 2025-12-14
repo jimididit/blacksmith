@@ -48,3 +48,6 @@ Thumbs.db
 
 # Internal documentation
 docs/
+
+# Internal Logs
+logs/
