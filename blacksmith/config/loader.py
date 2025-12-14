@@ -1,7 +1,7 @@
 """Load pre-made and custom sets."""
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from blacksmith.config.parser import load_yaml, parse_config
 from blacksmith.config.validator import validate_config
@@ -76,7 +76,7 @@ def list_available_sets() -> List[str]:
     return sorted(sets)
 
 
-def load_custom_config(file_path: str | Path) -> Optional[Dict]:
+def load_custom_config(file_path: Union[str, Path]) -> Optional[Dict]:
     """
     Load a custom configuration file.
     

@@ -2,7 +2,7 @@
 
 import shutil
 import subprocess
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.package_managers.apt import AptManager
@@ -65,7 +65,7 @@ def detect_available_managers() -> List[PackageManager]:
     return available
 
 
-def find_manager_for_package(package_config: dict, available_managers: List[PackageManager]) -> Optional[tuple[PackageManager, str]]:
+def find_manager_for_package(package_config: dict, available_managers: List[PackageManager]) -> Optional[Tuple[PackageManager, str]]:
     """
     Find the best package manager and package name for a given package config.
     

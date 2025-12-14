@@ -1,11 +1,11 @@
 """Configuration validation."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from blacksmith.utils.ui import print_error
 
 
-def validate_config(config_data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+def validate_config(config_data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """
     Validate configuration structure.
     

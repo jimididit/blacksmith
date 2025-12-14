@@ -2,14 +2,14 @@
 
 import yaml
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from blacksmith.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 
-def load_yaml(file_path: str | Path) -> Dict[str, Any]:
+def load_yaml(file_path: Union[str, Path]) -> Dict[str, Any]:
     """
     Load and parse a YAML file.
     
