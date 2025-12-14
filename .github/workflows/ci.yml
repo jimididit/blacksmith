@@ -1,0 +1,231 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+jobs:
+  # Code Quality & Linting
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff black mypy pytest pytest-cov
+      
+      - name: Run Ruff (linter)
+        run: ruff check blacksmith/
+      
+      - name: Run Ruff (formatter check)
+        run: ruff format --check blacksmith/
+      
+      - name: Type checking with mypy
+        run: mypy blacksmith/ --ignore-missing-imports || true
+      
+      - name: Check YAML syntax
+        run: |
+          pip install yamllint
+          yamllint blacksmith/sets/*.yaml
+
+  # Unit Tests
+  test:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-mock
+      
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=blacksmith --cov-report=xml --cov-report=term
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+
+  # Integration Tests - Test CLI Commands
+  integration-test:
+    name: Integration Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install Blacksmith
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      
+      - name: Test CLI commands (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          blacksmith --version
+          blacksmith --help
+          blacksmith list
+          blacksmith search git --limit 5 || echo "Search test skipped (no package manager)"
+      
+      - name: Test CLI commands (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          blacksmith --version
+          blacksmith --help
+          blacksmith list
+          blacksmith search git --limit 5 | Out-Null; if ($LASTEXITCODE -ne 0) { Write-Host "Search test skipped" }
+
+  # Test Installation Scripts
+  test-install:
+    name: Test Installation Scripts
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test install.sh (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          chmod +x install.sh
+          # Test dry-run or validation
+          bash -n install.sh  # Syntax check
+          # Could test actual install in a container
+      
+      - name: Test install.ps1 (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Syntax check
+          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content install.ps1 -Raw), [ref]$null)
+          Write-Host "PowerShell script syntax is valid"
+
+  # Security Scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install safety
+        run: pip install safety
+      
+      - name: Check dependencies for vulnerabilities
+        run: safety check --file requirements.txt
+      
+      - name: Run Bandit security linter
+        run: |
+          pip install bandit
+          bandit -r blacksmith/ -f json -o bandit-report.json || true
+
+  # Build Package
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+      
+      - name: Build package
+        run: python -m build
+      
+      - name: Check package
+        run: twine check dist/*
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: dist/
+
+  # Release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build, integration-test, security]
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: dist
+          path: dist/
+      
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          pip install twine
+          twine upload dist/*
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          draft: false
+          prerelease: false
+

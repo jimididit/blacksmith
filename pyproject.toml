@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "blacksmith"
+name = "jdi-blacksmith"
 version = "0.1.0"
 description = "A cross-platform CLI tool for installing development and cybersecurity tools"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Blacksmith Contributors"}
+    {name = "jimididit", email = "jimi.did.it@protonmail.com"}
 ]
 keywords = ["cli", "package-manager", "development-tools", "cybersecurity"]
 classifiers = [
