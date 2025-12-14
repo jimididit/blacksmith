@@ -1,5 +1,6 @@
 """UI helpers using Rich for beautiful terminal output."""
 
+import sys
 from typing import Any, Dict, List, Optional
 
 from rich.console import Console
@@ -26,7 +27,23 @@ custom_theme = Theme({
     "info": "#44FFD1",     # Use accent for info
 })
 
-console = Console(theme=custom_theme)
+# Configure console with encoding error handling for Windows
+# Use ASCII-safe symbols on Windows to avoid encoding issues
+if sys.platform == "win32":
+    # Windows console may not support Unicode characters
+    console = Console(theme=custom_theme, force_terminal=True, legacy_windows=True)
+    # ASCII-safe symbols for Windows
+    SYMBOL_SUCCESS = "[OK]"
+    SYMBOL_ERROR = "[X]"
+    SYMBOL_WARNING = "[!]"
+    SYMBOL_INFO = "[i]"
+else:
+    console = Console(theme=custom_theme)
+    # Unicode symbols for Unix-like systems
+    SYMBOL_SUCCESS = "✓"
+    SYMBOL_ERROR = "✗"
+    SYMBOL_WARNING = "⚠"
+    SYMBOL_INFO = "ℹ"
 
 
 def print_panel(title: str, content: str, style: str = "primary") -> None:
@@ -71,22 +88,22 @@ def print_table(title: str, headers: List[str], rows: List[List[str]], show_head
 
 def print_success(message: str) -> None:
     """Print a success message."""
-    console.print(f"[bold #44FFD1]✓[/bold #44FFD1] {message}")
+    console.print(f"[bold #44FFD1]{SYMBOL_SUCCESS}[/bold #44FFD1] {message}")
 
 
 def print_error(message: str) -> None:
     """Print an error message."""
-    console.print(f"[bold #FF6B6B]✗[/bold #FF6B6B] {message}")
+    console.print(f"[bold #FF6B6B]{SYMBOL_ERROR}[/bold #FF6B6B] {message}")
 
 
 def print_warning(message: str) -> None:
     """Print a warning message."""
-    console.print(f"[bold #FFD93D]⚠[/bold #FFD93D] {message}")
+    console.print(f"[bold #FFD93D]{SYMBOL_WARNING}[/bold #FFD93D] {message}")
 
 
 def print_info(message: str) -> None:
     """Print an info message."""
-    console.print(f"[bold #44FFD1]ℹ[/bold #44FFD1] {message}")
+    console.print(f"[bold #44FFD1]{SYMBOL_INFO}[/bold #44FFD1] {message}")
 
 
 def create_progress() -> Progress:

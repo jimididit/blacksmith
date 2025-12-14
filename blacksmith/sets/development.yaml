@@ -1,6 +1,6 @@
 ---
 name: "Development Tools"
-description: "Comprehensive development environment with essential tools, languages, and IDEs"
+description: "Development environment with essential tools and IDEs"
 packages:
   # Version Control
   - name: git
