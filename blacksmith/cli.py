@@ -36,7 +36,7 @@ def show_banner():
     import sys
     
     # ASCII art for blacksmith (lowercase)
-    ascii_art = """
+    ascii_art = r"""
   _     _            _                  _ _   _     
  | |__ | | __ _  ___| | _____ _ __ ___ (_) |_| |__  
  | '_ \| |/ _` |/ __| |/ / __| '_ ` _ \| | __| '_ \ 
