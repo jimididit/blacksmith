@@ -46,3 +46,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Internal documentation
+docs/
