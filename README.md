@@ -3,7 +3,8 @@
 > A cross-platform CLI tool that automates the installation of development and cybersecurity tools after a fresh OS install.
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/jimididit/blacksmith/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/jimididit/blacksmith)
 [![GitHub](https://img.shields.io/badge/GitHub-jimididit%2Fblacksmith-blue.svg)](https://github.com/jimididit/blacksmith)
 
@@ -269,9 +270,42 @@ blacksmith/
 │   ├── sets/               # Pre-made tool sets
 │   └── utils/              # Utility modules
 ├── tests/                  # Test suite
+├── scripts/                # Helper scripts
 ├── install.sh              # Installation script
 ├── uninstall.sh            # Uninstallation script
 └── README.md
+```
+
+### Version Management
+
+Blacksmith uses [Semantic Versioning](https://semver.org/) (SemVer): `MAJOR.MINOR.PATCH`
+
+- **PATCH** (0.1.0 → 0.1.1): Bug fixes, security patches
+- **MINOR** (0.1.0 → 0.2.0): New features (backward compatible)
+- **MAJOR** (0.2.0 → 1.0.0): Breaking changes, first stable release
+
+**Quick version bump:**
+
+```bash
+# Bump patch version (0.1.0 -> 0.1.1)
+python scripts/bump_version.py --patch
+
+# Bump minor version (0.1.0 -> 0.2.0)
+python scripts/bump_version.py --minor
+
+# Bump major version (0.1.0 -> 1.0.0)
+python scripts/bump_version.py --major
+
+# Or set a specific version
+python scripts/bump_version.py 0.1.1
+```
+
+**Manual version update:**
+Update the version in both `pyproject.toml` and `blacksmith/__init__.py`, then:
+
+```bash
+git tag -a v0.1.1 -m "Release version 0.1.1"
+git push origin v0.1.1
 ```
 
 ## 🤝 Contributing
