@@ -1,3 +1,4 @@
+---
 name: "Development Tools"
 description: "Comprehensive development environment with essential tools, languages, and IDEs"
 packages:
@@ -10,7 +11,7 @@ packages:
       winget: Git.Git
       chocolatey: git
       scoop: git
-  
+
   # Code Editors & IDEs
   - name: vscode
     managers:
@@ -22,7 +23,7 @@ packages:
       winget: Microsoft.VisualStudioCode
       chocolatey: vscode
       scoop: vscode
-  
+
   - name: vim
     managers:
       apt: vim
@@ -31,7 +32,7 @@ packages:
       winget: vim.vim
       chocolatey: vim
       scoop: vim
-  
+
   # Programming Languages
   - name: python
     managers:
@@ -42,7 +43,7 @@ packages:
       winget: Python.Python.3.12
       chocolatey: python
       scoop: python
-  
+
   - name: nodejs
     managers:
       apt: nodejs
@@ -52,7 +53,7 @@ packages:
       winget: OpenJS.NodeJS
       chocolatey: nodejs
       scoop: nodejs
-  
+
   - name: go
     managers:
       apt: golang-go
@@ -62,7 +63,7 @@ packages:
       winget: GoLang.Go
       chocolatey: golang
       scoop: go
-  
+
   - name: rust
     managers:
       apt: rustc
@@ -71,7 +72,7 @@ packages:
       winget: Rustlang.Rustup
       chocolatey: rust
       scoop: rust
-  
+
   # Build Tools & Package Managers
   - name: make
     managers:
@@ -81,7 +82,7 @@ packages:
       winget: GnuWin32.Make
       chocolatey: make
       scoop: make
-  
+
   - name: cmake
     managers:
       apt: cmake
@@ -90,7 +91,7 @@ packages:
       winget: Kitware.CMake
       chocolatey: cmake
       scoop: cmake
-  
+
   - name: pip
     managers:
       apt: python3-pip
@@ -98,7 +99,7 @@ packages:
       yum: python3-pip
       winget: Python.Python.3.12
       chocolatey: pip
-  
+
   - name: npm
     managers:
       apt: npm
@@ -108,7 +109,7 @@ packages:
       winget: OpenJS.NodeJS
       chocolatey: nodejs
       scoop: nodejs
-  
+
   # Container & Virtualization
   - name: docker
     managers:
@@ -119,7 +120,7 @@ packages:
       winget: Docker.DockerDesktop
       chocolatey: docker-desktop
       scoop: docker
-  
+
   - name: docker-compose
     managers:
       apt: docker-compose
@@ -129,7 +130,7 @@ packages:
       winget: Docker.DockerDesktop
       chocolatey: docker-desktop
       scoop: docker-compose
-  
+
   # Database Tools
   - name: postgresql
     managers:
@@ -140,7 +141,7 @@ packages:
       winget: PostgreSQL.PostgreSQL
       chocolatey: postgresql
       scoop: postgresql
-  
+
   - name: mysql
     managers:
       apt: mysql-server
@@ -150,7 +151,7 @@ packages:
       winget: Oracle.MySQL
       chocolatey: mysql
       scoop: mysql
-  
+
   # Network Tools
   - name: curl
     managers:
@@ -160,7 +161,7 @@ packages:
       winget: cURL.cURL
       chocolatey: curl
       scoop: curl
-  
+
   - name: wget
     managers:
       apt: wget
@@ -169,7 +170,7 @@ packages:
       winget: GNU.Wget
       chocolatey: wget
       scoop: wget
-  
+
   - name: openssh
     managers:
       apt: openssh-client
@@ -178,7 +179,7 @@ packages:
       winget: Microsoft.OpenSSH.Beta
       chocolatey: openssh
       scoop: openssh
-  
+
   # Testing & Quality Tools
   - name: jq
     managers:
@@ -188,7 +189,7 @@ packages:
       winget: stedolan.jq
       chocolatey: jq
       scoop: jq
-  
+
   - name: htop
     managers:
       apt: htop
@@ -197,7 +198,7 @@ packages:
       winget: htop.htop
       chocolatey: htop
       scoop: htop
-  
+
   # Additional Development Tools
   - name: tmux
     managers:
@@ -207,7 +208,7 @@ packages:
       winget: tmux.tmux
       chocolatey: tmux
       scoop: tmux
-  
+
   - name: zsh
     managers:
       apt: zsh
@@ -216,7 +217,7 @@ packages:
       winget: GnuWin32.Zsh
       chocolatey: zsh
       scoop: zsh
-  
+
   - name: tree
     managers:
       apt: tree

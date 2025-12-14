@@ -1,3 +1,4 @@
+---
 name: "Minimal Setup"
 description: "Lightweight setup with just the absolute essentials"
 packages:
@@ -9,7 +10,7 @@ packages:
       winget: Git.Git
       chocolatey: git
       scoop: git
-  
+
   - name: curl
     managers:
       apt: curl
@@ -18,7 +19,7 @@ packages:
       winget: cURL.cURL
       chocolatey: curl
       scoop: curl
-  
+
   - name: vim
     managers:
       apt: vim
@@ -27,7 +28,7 @@ packages:
       winget: vim.vim
       chocolatey: vim
       scoop: vim
-  
+
   - name: wget
     managers:
       apt: wget
