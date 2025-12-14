@@ -9,23 +9,25 @@ def detect_os() -> str:
     Detect the current operating system.
     
     Returns:
-        'linux' or 'windows'
+        'Linux', 'Windows', 'Darwin', or 'Unknown'
     """
-    system = platform.system().lower()
-    if system == "linux":
-        return "linux"
-    elif system == "windows":
-        return "windows"
+    system = platform.system()
+    if system == "Linux":
+        return "Linux"
+    elif system == "Windows":
+        return "Windows"
+    elif system == "Darwin":
+        return "Darwin"
     else:
-        return "unknown"
+        return "Unknown"
 
 
 def is_linux() -> bool:
     """Check if running on Linux."""
-    return detect_os() == "linux"
+    return detect_os() == "Linux"
 
 
 def is_windows() -> bool:
     """Check if running on Windows."""
-    return detect_os() == "windows"
+    return detect_os() == "Windows"
 
