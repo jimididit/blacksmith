@@ -1,0 +1,30 @@
+name: "Minimal Setup"
+description: "Lightweight setup with just the essentials"
+packages:
+  - name: git
+    managers:
+      apt: git
+      pacman: git
+      yum: git
+      winget: Git.Git
+      chocolatey: git
+      scoop: git
+  
+  - name: curl
+    managers:
+      apt: curl
+      pacman: curl
+      yum: curl
+      winget: cURL.cURL
+      chocolatey: curl
+      scoop: curl
+  
+  - name: vim
+    managers:
+      apt: vim
+      pacman: vim
+      yum: vim
+      winget: vim.vim
+      chocolatey: vim
+      scoop: vim
+

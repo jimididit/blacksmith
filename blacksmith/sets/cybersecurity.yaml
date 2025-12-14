@@ -1,0 +1,55 @@
+name: "Cybersecurity Tools"
+description: "Security and penetration testing tools"
+packages:
+  - name: nmap
+    managers:
+      apt: nmap
+      pacman: nmap
+      yum: nmap
+      winget: Insecure.Nmap
+      chocolatey: nmap
+      scoop: nmap
+  
+  - name: wireshark
+    managers:
+      apt: wireshark
+      pacman: wireshark
+      yum: wireshark
+      winget: WiresharkFoundation.Wireshark
+      chocolatey: wireshark
+      scoop: wireshark
+  
+  - name: metasploit
+    managers:
+      apt: metasploit-framework
+      pacman: metasploit
+      yum: metasploit-framework
+      chocolatey: metasploit
+  
+  - name: burp-suite
+    managers:
+      apt: burpsuite
+      pacman: burpsuite
+      chocolatey: burp-suite-free-edition
+  
+  - name: john
+    managers:
+      apt: john
+      pacman: john
+      yum: john
+      chocolatey: john
+  
+  - name: hashcat
+    managers:
+      apt: hashcat
+      pacman: hashcat
+      yum: hashcat
+      chocolatey: hashcat
+  
+  - name: aircrack-ng
+    managers:
+      apt: aircrack-ng
+      pacman: aircrack-ng
+      yum: aircrack-ng
+      chocolatey: aircrack-ng
+

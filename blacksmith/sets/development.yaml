@@ -1,0 +1,57 @@
+name: "Development Tools"
+description: "Essential development tools for software development"
+packages:
+  - name: git
+    managers:
+      apt: git
+      pacman: git
+      yum: git
+      winget: Git.Git
+      chocolatey: git
+      scoop: git
+  
+  - name: docker
+    managers:
+      apt: docker.io
+      pacman: docker
+      yum: docker
+      winget: Docker.DockerDesktop
+      chocolatey: docker-desktop
+  
+  - name: vscode
+    managers:
+      apt: code
+      pacman: code
+      yum: code
+      snap: code
+      winget: Microsoft.VisualStudioCode
+      chocolatey: vscode
+      scoop: vscode
+  
+  - name: python
+    managers:
+      apt: python3
+      pacman: python
+      yum: python3
+      winget: Python.Python.3.12
+      chocolatey: python
+  
+  - name: nodejs
+    managers:
+      apt: nodejs
+      pacman: nodejs
+      yum: nodejs
+      snap: node
+      winget: OpenJS.NodeJS
+      chocolatey: nodejs
+      scoop: nodejs
+  
+  - name: curl
+    managers:
+      apt: curl
+      pacman: curl
+      yum: curl
+      winget: cURL.cURL
+      chocolatey: curl
+      scoop: curl
+
