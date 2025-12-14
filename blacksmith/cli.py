@@ -578,6 +578,68 @@ def uninstall(yes: bool):
     import shutil
     import sys
     import os
+    import tempfile
+    import time
+    
+    def create_cleanup_script(target_file: str) -> str:
+        """
+        Create a temporary script that will delete the target file and itself.
+        Returns the path to the created script.
+        """
+        if os.name == 'nt':  # Windows
+            # Create a PowerShell script
+            script_content = f"""
+# Wait for the process to fully exit
+Start-Sleep -Seconds 2
+
+# Try to delete the target file
+$target = '{target_file}'
+if (Test-Path $target) {{
+    try {{
+        Remove-Item $target -Force -ErrorAction Stop
+        Write-Host "Deleted: $target"
+    }} catch {{
+        Write-Host "Could not delete: $target"
+        Write-Host "Error: $_"
+    }}
+}}
+
+# Delete this script itself
+$scriptPath = $MyInvocation.MyCommand.Path
+Start-Sleep -Seconds 1
+if (Test-Path $scriptPath) {{
+    Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
+}}
+"""
+            # Create temp PowerShell script
+            fd, script_path = tempfile.mkstemp(suffix='.ps1', prefix='blacksmith_cleanup_', text=True)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(script_content)
+            return script_path
+        else:  # Linux/Mac
+            # Create a bash script
+            script_content = f"""#!/bin/bash
+# Wait for the process to fully exit
+sleep 2
+
+# Try to delete the target file
+if [ -f '{target_file}' ]; then
+    rm -f '{target_file}' && echo "Deleted: {target_file}" || echo "Could not delete: {target_file}"
+fi
+
+# Delete this script itself
+SCRIPT_PATH="$0"
+sleep 1
+rm -f "$SCRIPT_PATH"
+"""
+            # Create temp bash script
+            fd, script_path = tempfile.mkstemp(suffix='.sh', prefix='blacksmith_cleanup_', text=True)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(script_content)
+            # Make it executable
+            os.chmod(script_path, 0o755)
+            return script_path
+    
     
     print_panel("Uninstall Blacksmith", "This will remove Blacksmith from your system.")
     
@@ -606,23 +668,26 @@ def uninstall(yes: bool):
     python_exe = sys.executable
     
     # List of methods to try (in order of likelihood)
+    # Try both package names in case user installed from PyPI (jdi-blacksmith) or from source (blacksmith)
     uninstall_methods = [
-        # Method 1: Use the same Python that's running Blacksmith
-        ([python_exe, "-m", "pip", "uninstall", "-y", "blacksmith"], "python -m pip"),
-        # Method 2: With --user flag
-        ([python_exe, "-m", "pip", "uninstall", "-y", "--user", "blacksmith"], "python -m pip --user"),
-        # Method 3: Try pip directly
-        (["pip", "uninstall", "-y", "blacksmith"], "pip"),
-        # Method 4: pip with --user
-        (["pip", "uninstall", "-y", "--user", "blacksmith"], "pip --user"),
-        # Method 5: pip3
-        (["pip3", "uninstall", "-y", "blacksmith"], "pip3"),
-        # Method 6: Windows Python launcher
-        (["py", "-m", "pip", "uninstall", "-y", "blacksmith"], "py -m pip"),
-        # Method 7: python3 -m pip
-        (["python3", "-m", "pip", "uninstall", "-y", "blacksmith"], "python3 -m pip"),
-        # Method 8: python -m pip (if python_exe is different)
-        (["python", "-m", "pip", "uninstall", "-y", "blacksmith"], "python -m pip"),
+        # Method 1: Use the same Python that's running Blacksmith (PyPI package name)
+        ([python_exe, "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "python -m pip"),
+        # Method 2: With --user flag (PyPI package name)
+        ([python_exe, "-m", "pip", "uninstall", "-y", "--user", "jdi-blacksmith"], "python -m pip --user"),
+        # Method 3: Try pip directly (PyPI package name)
+        (["pip", "uninstall", "-y", "jdi-blacksmith"], "pip"),
+        # Method 4: pip with --user (PyPI package name)
+        (["pip", "uninstall", "-y", "--user", "jdi-blacksmith"], "pip --user"),
+        # Method 5: Fallback to old package name (for source installs)
+        ([python_exe, "-m", "pip", "uninstall", "-y", "blacksmith"], "python -m pip (fallback)"),
+        # Method 6: pip3 (PyPI package name)
+        (["pip3", "uninstall", "-y", "jdi-blacksmith"], "pip3"),
+        # Method 7: Windows Python launcher (PyPI package name)
+        (["py", "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "py -m pip"),
+        # Method 8: python3 -m pip (PyPI package name)
+        (["python3", "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "python3 -m pip"),
+        # Method 9: python -m pip (PyPI package name)
+        (["python", "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "python -m pip"),
     ]
     
     for cmd, method_name in uninstall_methods:
@@ -639,13 +704,83 @@ def uninstall(yes: bool):
             
             if result.returncode == 0:
                 print_success(f"Blacksmith uninstalled successfully using {method_name}.")
-                # Also try to remove the executable if it still exists
+                # Try to remove the executable if it still exists
+                # Note: This may fail if Blacksmith is currently running (which it is, since we're in it)
                 if os.path.exists(blacksmith_path):
                     try:
-                        os.remove(blacksmith_path)
-                        print_success(f"Removed executable: {blacksmith_path}")
+                        # Check if we're running from this executable
+                        current_exe = sys.executable
+                        if os.path.exists(current_exe) and os.path.samefile(current_exe, blacksmith_path):
+                            print_warning("Cannot remove executable while Blacksmith is running.")
+                            print_info("Creating cleanup script to delete it after this process exits...")
+                            
+                            try:
+                                cleanup_script = create_cleanup_script(blacksmith_path)
+                                
+                                # Launch the cleanup script in a separate process
+                                if os.name == 'nt':  # Windows
+                                    # Use PowerShell to run the script in background
+                                    subprocess.Popen(
+                                        ['powershell', '-ExecutionPolicy', 'Bypass', '-File', cleanup_script],
+                                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL
+                                    )
+                                else:  # Linux/Mac
+                                    # Run bash script in background
+                                    subprocess.Popen(
+                                        ['bash', cleanup_script],
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL
+                                    )
+                                
+                                print_success("Cleanup script created. The executable will be deleted automatically.")
+                                print_info("You can close this terminal now.")
+                            except Exception as e:
+                                logger.debug(f"Failed to create cleanup script: {e}")
+                                print_warning("Could not create automatic cleanup script.")
+                                print_info("Please manually delete the executable after closing this terminal:")
+                                print_info(f"  {blacksmith_path}")
+                        else:
+                            os.remove(blacksmith_path)
+                            print_success(f"Removed executable: {blacksmith_path}")
+                    except PermissionError as e:
+                        print_warning("Cannot remove executable - it's currently in use.")
+                        print_info("This is normal when uninstalling from within Blacksmith.")
+                        print_info("Creating cleanup script to delete it after this process exits...")
+                        
+                        try:
+                            cleanup_script = create_cleanup_script(blacksmith_path)
+                            
+                            # Launch the cleanup script in a separate process
+                            if os.name == 'nt':  # Windows
+                                # Use PowerShell to run the script in background
+                                subprocess.Popen(
+                                    ['powershell', '-ExecutionPolicy', 'Bypass', '-File', cleanup_script],
+                                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL
+                                )
+                            else:  # Linux/Mac
+                                # Run bash script in background
+                                subprocess.Popen(
+                                    ['bash', cleanup_script],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL
+                                )
+                            
+                            print_success("Cleanup script created. The executable will be deleted automatically.")
+                            print_info("You can close this terminal now.")
+                        except Exception as e:
+                            logger.debug(f"Failed to create cleanup script: {e}")
+                            print_warning("Could not create automatic cleanup script.")
+                            print_info("Please manually delete the executable after closing this terminal:")
+                            print_info(f"  {blacksmith_path}")
                     except Exception as e:
                         print_warning(f"Could not remove executable: {e}")
+                        print_info(f"You may need to manually delete: {blacksmith_path}")
+                else:
+                    print_success("Executable already removed.")
                 return
             else:
                 # Log the error for debugging (but don't show to user unless all fail)
@@ -664,9 +799,10 @@ def uninstall(yes: bool):
     print_error("Could not automatically uninstall Blacksmith.")
     print_info("You may need to manually remove it:")
     print_info(f"  - Remove the command: {blacksmith_path}")
-    print_info(f"  - Run: {python_exe} -m pip uninstall blacksmith")
-    print_info("  - Or: pip uninstall blacksmith")
-    print_info("  - Or: pip uninstall --user blacksmith")
+    print_info(f"  - Run: {python_exe} -m pip uninstall jdi-blacksmith")
+    print_info("  - Or: pip uninstall jdi-blacksmith")
+    print_info("  - Or: pip uninstall --user jdi-blacksmith")
+    print_info("  - If installed from source: pip uninstall blacksmith")
     
     # Try to show what went wrong with the last method
     if blacksmith_path:

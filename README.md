@@ -44,7 +44,17 @@ curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/install.s
 irm https://raw.githubusercontent.com/jimididit/blacksmith/main/install.ps1 | iex
 ```
 
-### Manual Installation
+### Install from PyPI
+
+```bash
+# Global installation
+pip install jdi-blacksmith
+
+# Or for current user only (no admin required)
+pip install --user jdi-blacksmith
+```
+
+### Manual Installation (from source)
 
 1. Clone the repository:
 
