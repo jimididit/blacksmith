@@ -62,4 +62,24 @@ class SnapManager(PackageManager):
             return result.returncode == 0 and package in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
+    
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using snap refresh."""
+        try:
+            cmd = ["sudo", "snap", "refresh", package]
+            result = subprocess.run(
+                cmd,
+                timeout=600
+            )
+            if result.returncode != 0:
+                logger.error(f"Snap refresh failed for {package}")
+                from blacksmith.utils.ui import print_error
+                print_error(f"Failed to update {package}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("Snap refresh timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("Snap refresh timed out")
+            return False
 

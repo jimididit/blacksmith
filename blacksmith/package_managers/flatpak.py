@@ -63,4 +63,30 @@ class FlatpakManager(PackageManager):
             return result.returncode == 0 and package in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
+    
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using flatpak update."""
+        try:
+            cmd = ["flatpak", "update", "-y", package]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600
+            )
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                logger.error(f"Flatpak update failed for {package}: {error_msg}")
+                from blacksmith.utils.ui import print_error
+                if "already installed" in error_msg.lower() or "up to date" in error_msg.lower():
+                    print_error(f"{package} is already up to date")
+                else:
+                    print_error(f"Failed to update {package}: {error_msg[:150]}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("Flatpak update timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("Flatpak update timed out")
+            return False
 

@@ -65,6 +65,33 @@ class ScoopManager(PackageManager):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using scoop update."""
+        try:
+            cmd = ["scoop", "update", package]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                shell=True
+            )
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                logger.error(f"Scoop update failed for {package}: {error_msg}")
+                from blacksmith.utils.ui import print_error
+                if "already installed" in error_msg.lower() or "up to date" in error_msg.lower():
+                    print_error(f"{package} is already up to date")
+                else:
+                    print_error(f"Failed to update {package}: {error_msg[:150]}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("Scoop update timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("Scoop update timed out")
+            return False
+    
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using Scoop."""
         try:

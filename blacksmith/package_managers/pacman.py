@@ -61,6 +61,36 @@ class PacmanManager(PackageManager):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using pacman -S (upgrades if newer version available)."""
+        try:
+            # First sync package database
+            sync_result = subprocess.run(
+                ["sudo", "pacman", "-Sy"],
+                timeout=300
+            )
+            if sync_result.returncode != 0:
+                logger.error("Pacman sync failed")
+                return False
+            
+            # Then upgrade the specific package (-S will upgrade if newer version exists)
+            cmd = ["sudo", "pacman", "-S", "--noconfirm", package]
+            result = subprocess.run(
+                cmd,
+                timeout=600
+            )
+            if result.returncode != 0:
+                logger.error(f"Pacman upgrade failed for {package}")
+                from blacksmith.utils.ui import print_error
+                print_error(f"Failed to update {package}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("Pacman upgrade timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("Pacman upgrade timed out")
+            return False
+    
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using pacman."""
         try:

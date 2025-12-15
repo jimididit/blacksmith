@@ -35,9 +35,29 @@ class WingetManager(PackageManager):
         if not packages:
             return True
         
+        from blacksmith.utils.ui import print_error, print_warning, print_info
+        
         try:
             success = True
             for package in packages:
+                # First verify package exists
+                verify_cmd = ["winget", "search", "--exact", "--id", package]
+                verify_result = subprocess.run(
+                    verify_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    shell=True
+                )
+                
+                if verify_result.returncode != 0 or package not in verify_result.stdout:
+                    print_error(f"Package {package} not found in winget repository")
+                    print_warning(f"  Try searching: winget search {package.split('.')[0] if '.' in package else package}")
+                    success = False
+                    continue
+                
+                # Try installation without --silent first (more reliable)
+                # Some packages don't support --silent
                 cmd = ["winget", "install", "--accept-package-agreements", "--accept-source-agreements", package]
                 result = subprocess.run(
                     cmd,
@@ -46,12 +66,39 @@ class WingetManager(PackageManager):
                     timeout=600,
                     shell=True
                 )
+                
                 if result.returncode != 0:
-                    logger.error(f"Winget install failed for {package}: {result.stderr}")
+                    # Extract error message from output
+                    error_msg = result.stderr.strip() or result.stdout.strip()
+                    logger.error(f"Winget install failed for {package}: {error_msg}")
+                    
+                    # Show user-friendly error
+                    if "No package found" in error_msg or "No applicable package" in error_msg:
+                        print_error(f"Package {package} not found in winget repository")
+                        print_warning(f"  Try: winget search {package.split('.')[0] if '.' in package else package}")
+                    elif "requires administrator" in error_msg.lower() or "elevated" in error_msg.lower() or "administrator" in error_msg.lower():
+                        print_error(f"Administrator privileges required for {package}")
+                        print_warning("  Please run Blacksmith as Administrator")
+                    elif "hash" in error_msg.lower() or "security" in error_msg.lower():
+                        print_error(f"Security/hash verification failed for {package}")
+                        print_warning("  You may need to update winget or allow hash override")
+                    elif error_msg:
+                        # Show first few lines of error
+                        error_lines = [line.strip() for line in error_msg.split('\n') if line.strip()][:3]
+                        if error_lines:
+                            error_preview = ' | '.join(error_lines)
+                            print_error(f"Failed to install {package}: {error_preview[:200]}")
+                        else:
+                            print_error(f"Failed to install {package} (check winget output above)")
+                    else:
+                        print_error(f"Failed to install {package} (exit code: {result.returncode})")
                     success = False
+                else:
+                    print_info(f"Successfully installed {package}")
             return success
         except subprocess.TimeoutExpired:
             logger.error("Winget install timed out")
+            print_error("Winget install timed out")
             return False
     
     def is_installed(self, package: str) -> bool:
@@ -68,6 +115,33 @@ class WingetManager(PackageManager):
             )
             return result.returncode == 0 and package in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+    
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using winget upgrade."""
+        try:
+            cmd = ["winget", "upgrade", "--accept-package-agreements", "--accept-source-agreements", package]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                shell=True
+            )
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                logger.error(f"Winget upgrade failed for {package}: {error_msg}")
+                from blacksmith.utils.ui import print_error
+                if "No applicable update" in error_msg or "already installed" in error_msg.lower():
+                    print_error(f"{package} is already up to date")
+                else:
+                    print_error(f"Failed to update {package}: {error_msg[:150]}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("Winget upgrade timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("Winget upgrade timed out")
             return False
     
     def search(self, query: str, limit: int = 10) -> List[Dict]:

@@ -85,6 +85,28 @@ class YumManager(PackageManager):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using yum/dnf upgrade."""
+        try:
+            # Use 'upgrade' for dnf, 'update' for yum
+            upgrade_cmd = "upgrade" if self.command == "dnf" else "update"
+            cmd = ["sudo", self.command, upgrade_cmd, "-y", package]
+            result = subprocess.run(
+                cmd,
+                timeout=600
+            )
+            if result.returncode != 0:
+                logger.error(f"{self.command} upgrade failed for {package}")
+                from blacksmith.utils.ui import print_error
+                print_error(f"Failed to update {package}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error(f"{self.command} upgrade timed out")
+            from blacksmith.utils.ui import print_error
+            print_error(f"{self.command} upgrade timed out")
+            return False
+    
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using yum or dnf."""
         try:

@@ -73,6 +73,37 @@ class AptManager(PackageManager):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using apt install --only-upgrade."""
+        try:
+            # Update package list first
+            result = subprocess.run(
+                ["sudo", "apt", "update"],
+                check=False,
+                timeout=300
+            )
+            if result.returncode != 0:
+                logger.error("APT update failed")
+                return False
+            
+            # Upgrade the specific package
+            cmd = ["sudo", "apt", "install", "--only-upgrade", "-y", package]
+            result = subprocess.run(
+                cmd,
+                timeout=600
+            )
+            if result.returncode != 0:
+                logger.error(f"APT upgrade failed for {package}")
+                from blacksmith.utils.ui import print_error
+                print_error(f"Failed to update {package}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("APT upgrade timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("APT upgrade timed out")
+            return False
+    
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using apt-cache."""
         try:

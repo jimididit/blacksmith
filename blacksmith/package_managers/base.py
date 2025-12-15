@@ -62,6 +62,19 @@ class PackageManager(ABC):
         # Default implementation does nothing
         return True
     
+    def update_package(self, package: str) -> bool:
+        """
+        Update a specific package (if supported by the package manager).
+        
+        Args:
+            package: Package name to update
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Default implementation: just reinstall (works for most managers)
+        return self.install([package])
+    
     def search(self, query: str, limit: int = 10) -> List[dict]:
         """
         Search for packages in this package manager.

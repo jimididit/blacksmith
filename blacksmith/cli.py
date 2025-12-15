@@ -169,8 +169,14 @@ def show_installation_summary(config: dict, available_managers: list):
         return False
 
 
-def install_packages(config: dict, skip_installed: bool = False):
-    """Install packages from configuration."""
+def install_packages(config: dict, skip_installed: bool = False, show_summary: bool = True):
+    """Install packages from configuration.
+    
+    Args:
+        config: Configuration dict with packages to install
+        skip_installed: If True, skip already installed packages without prompting
+        show_summary: If True, show installation summary and prompt for confirmation
+    """
     available_managers = detect_available_managers()
     
     if not available_managers:
@@ -181,13 +187,14 @@ def install_packages(config: dict, skip_installed: bool = False):
     manager_names = [mgr.name for mgr in available_managers]
     print_info(f"Detected package managers: {', '.join(manager_names)}")
     
-    # Show summary and get confirmation
-    confirmation = show_installation_summary(config, available_managers)
-    if confirmation == "back":
-        return "back"
-    elif not confirmation:
-        print_info("Installation cancelled.")
-        return False
+    # Show summary and get confirmation (if requested)
+    if show_summary:
+        confirmation = show_installation_summary(config, available_managers)
+        if confirmation == "back":
+            return "back"
+        elif not confirmation:
+            print_info("Installation cancelled.")
+            return False
     
     # Check if any managers require sudo
     requires_sudo = any(
@@ -202,10 +209,13 @@ def install_packages(config: dict, skip_installed: bool = False):
     
     packages = config.get("packages", [])
     
-    # Group packages by manager
-    manager_packages = {}
-    skipped = []
+    # Check each package and determine action
+    packages_to_install = []  # (pkg_name, pkg_id, mgr, action) where action is 'install', 'reinstall', 'update'
+    packages_to_skip = []
     not_found = []
+    
+    console.print()
+    print_info("Checking installed packages...")
     
     for pkg in packages:
         pkg_name = pkg.get("name", "Unknown")
@@ -217,49 +227,113 @@ def install_packages(config: dict, skip_installed: bool = False):
         
         mgr, pkg_id = manager_info
         
-        # Check if already installed
-        if skip_installed and mgr.is_installed(pkg_id):
-            skipped.append(pkg_name)
-            print_info(f"⏭  Skipping {pkg_name} (already installed)")
-            continue
-        
+        # Always check if installed
+        if mgr.is_installed(pkg_id):
+            # Package is installed - prompt user
+            if skip_installed:
+                # Old behavior: just skip
+                packages_to_skip.append(pkg_name)
+                print_info(f"⏭  Skipping {pkg_name} (already installed)")
+            else:
+                # New behavior: prompt user
+                choices = [
+                    questionary.Choice("Skip (keep current version)", "skip"),
+                    questionary.Choice("Reinstall", "reinstall"),
+                    questionary.Choice("Update (if available)", "update")
+                ]
+                
+                action = questionary.select(
+                    f"{pkg_name} is already installed. What would you like to do?",
+                    choices=choices,
+                    default="skip"
+                ).ask()
+                
+                if action == "skip":
+                    packages_to_skip.append(pkg_name)
+                    print_info(f"⏭  Skipping {pkg_name}")
+                elif action == "reinstall":
+                    packages_to_install.append((pkg_name, pkg_id, mgr, "reinstall"))
+                elif action == "update":
+                    packages_to_install.append((pkg_name, pkg_id, mgr, "update"))
+        else:
+            # Package not installed - install it
+            packages_to_install.append((pkg_name, pkg_id, mgr, "install"))
+    
+    # Group packages by manager and action
+    manager_packages = {}  # {manager_name: [(pkg_name, pkg_id, mgr, action), ...]}
+    
+    for pkg_name, pkg_id, mgr, action in packages_to_install:
         if mgr.name not in manager_packages:
             manager_packages[mgr.name] = []
-        manager_packages[mgr.name].append((pkg_name, pkg_id, mgr))
+        manager_packages[mgr.name].append((pkg_name, pkg_id, mgr, action))
     
-    # Install packages by manager
+    # Install/update packages by manager
     success_count = 0
     fail_count = 0
+    updated_count = 0
+    reinstalled_count = 0
     
-    with create_progress() as progress:
-        for manager_name, pkg_list in manager_packages.items():
-            # Get the manager instance (they're all the same for a given name)
-            mgr = pkg_list[0][2]
-            pkg_ids = [pkg_id for _, pkg_id, _ in pkg_list]
-            
-            task = progress.add_task(f"Installing via {manager_name}...", total=len(pkg_ids))
-            
-            if mgr.install(pkg_ids):
-                progress.update(task, completed=len(pkg_ids))
-                success_count += len(pkg_ids)
-                for pkg_name, _, _ in pkg_list:
-                    print_success(f"Installed {pkg_name}")
-            else:
-                progress.update(task, completed=len(pkg_ids))
-                fail_count += len(pkg_ids)
-                for pkg_name, _, _ in pkg_list:
-                    print_error(f"Failed to install {pkg_name}")
+    if packages_to_install:
+        console.print()
+        with create_progress() as progress:
+            for manager_name, pkg_list in manager_packages.items():
+                # Get the manager instance (all entries for same manager have same instance)
+                mgr = pkg_list[0][2]  # Get manager from first package
+                
+                # Process packages by action type
+                install_list = [(name, pkg_id) for name, pkg_id, _, action in pkg_list if action in ["install", "reinstall"]]
+                update_list = [(name, pkg_id) for name, pkg_id, _, action in pkg_list if action == "update"]
+                
+                # Handle updates
+                if update_list:
+                    task = progress.add_task(f"Updating via {manager_name}...", total=len(update_list))
+                    for pkg_name, pkg_id in update_list:
+                        if mgr.update_package(pkg_id):
+                            progress.update(task, advance=1)
+                            updated_count += 1
+                            print_success(f"Updated {pkg_name}")
+                        else:
+                            progress.update(task, advance=1)
+                            fail_count += 1
+                            print_error(f"Failed to update {pkg_name}")
+                
+                # Handle installs/reinstalls
+                if install_list:
+                    task = progress.add_task(f"Installing via {manager_name}...", total=len(install_list))
+                    pkg_ids = [pkg_id for _, pkg_id in install_list]
+                    
+                    if mgr.install(pkg_ids):
+                        progress.update(task, completed=len(pkg_ids))
+                        for pkg_name, pkg_id in install_list:
+                            # Check if it was a reinstall by looking at original action
+                            was_reinstall = any(name == pkg_name and action == "reinstall" 
+                                              for name, _, _, action in pkg_list)
+                            if was_reinstall:
+                                reinstalled_count += 1
+                                print_success(f"Reinstalled {pkg_name}")
+                            else:
+                                success_count += 1
+                                print_success(f"Installed {pkg_name}")
+                    else:
+                        progress.update(task, completed=len(pkg_ids))
+                        fail_count += len(pkg_ids)
+                        for pkg_name, _ in install_list:
+                            print_error(f"Failed to install {pkg_name}")
     
     # Summary
     console.print()
-    if skipped:
-        print_info(f"Skipped {len(skipped)} already installed package(s)")
+    if packages_to_skip:
+        print_info(f"Skipped {len(packages_to_skip)} already installed package(s)")
+    if updated_count > 0:
+        print_success(f"Updated {updated_count} package(s)")
+    if reinstalled_count > 0:
+        print_success(f"Reinstalled {reinstalled_count} package(s)")
     if not_found:
         print_warning(f"Could not find manager for {len(not_found)} package(s)")
     if success_count > 0:
         print_success(f"Successfully installed {success_count} package(s)")
     if fail_count > 0:
-        print_error(f"Failed to install {fail_count} package(s)")
+        print_error(f"Failed to install/update {fail_count} package(s)")
     
     return fail_count == 0
 
@@ -291,8 +365,8 @@ def cli(ctx):
                 # User wants to go back to menu, continue loop
                 continue
             elif confirmation:
-                # User confirmed, proceed with installation
-                result = install_packages(config)
+                # User confirmed, proceed with installation (skip summary since we already showed it)
+                result = install_packages(config, show_summary=False)
                 
                 # Handle back option from install_packages
                 if result == "back":

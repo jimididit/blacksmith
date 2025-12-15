@@ -65,6 +65,33 @@ class ChocolateyManager(PackageManager):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
+    def update_package(self, package: str) -> bool:
+        """Update a specific package using chocolatey upgrade."""
+        try:
+            cmd = ["choco", "upgrade", "-y", package]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                shell=True
+            )
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                logger.error(f"Chocolatey upgrade failed for {package}: {error_msg}")
+                from blacksmith.utils.ui import print_error
+                if "already installed" in error_msg.lower() or "up to date" in error_msg.lower():
+                    print_error(f"{package} is already up to date")
+                else:
+                    print_error(f"Failed to update {package}: {error_msg[:150]}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error("Chocolatey upgrade timed out")
+            from blacksmith.utils.ui import print_error
+            print_error("Chocolatey upgrade timed out")
+            return False
+    
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using Chocolatey."""
         try:
