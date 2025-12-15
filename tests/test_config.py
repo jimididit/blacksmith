@@ -47,3 +47,24 @@ def test_validate_config_structure():
     is_valid, error = validate_config(config)
     assert is_valid, f"Config validation failed: {error}"
 
+
+def test_validate_config_with_new_fields():
+    """Test validation with new optional fields."""
+    config = {
+        "name": "Test Set",
+        "packages": [
+            {
+                "name": "git",
+                "managers": {"apt": "git", "winget": "Git.Git"}
+            }
+        ],
+        "target_os": ["windows", "linux"],
+        "preferred_managers": {
+            "windows": ["winget", "chocolatey"]
+        },
+        "managers_supported": ["winget", "apt"]
+    }
+    
+    is_valid, error = validate_config(config)
+    assert is_valid, f"Validation failed: {error}"
+
