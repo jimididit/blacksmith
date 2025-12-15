@@ -59,15 +59,15 @@ def update_version(new_version):
     content = PYPROJECT_TOML.read_text()
     content = re.sub(r'version = "[^"]+"', f'version = "{new_version}"', content)
     PYPROJECT_TOML.write_text(content)
-    print(f"✓ Updated {PYPROJECT_TOML}")
+    print(f"[OK] Updated {PYPROJECT_TOML}")
     
     # Update __init__.py
     content = INIT_PY.read_text()
     content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{new_version}"', content)
     INIT_PY.write_text(content)
-    print(f"✓ Updated {INIT_PY}")
+    print(f"[OK] Updated {INIT_PY}")
     
-    print(f"\n✓ Version bumped to {new_version}")
+    print(f"\n[OK] Version bumped to {new_version}")
     print("\nNext steps:")
     print(f"  1. git add pyproject.toml blacksmith/__init__.py")
     print(f"  2. git commit -m 'Bump version to {new_version}'")
