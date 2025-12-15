@@ -46,8 +46,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Internal documentation
+# Internal
 docs/
-
-# Internal Logs
 logs/
+release-notes/
