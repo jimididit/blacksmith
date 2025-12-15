@@ -2,6 +2,7 @@
 
 > A cross-platform CLI tool that automates the installation of development and cybersecurity tools after a fresh OS install.
 
+[![CI/CD Pipeline](https://github.com/jimididit/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/jimididit/blacksmith/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/jimididit/blacksmith/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
