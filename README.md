@@ -85,6 +85,8 @@ pip install --user -e .
 blacksmith --version
 ```
 
+> 💡 **Having installation issues?** See the [Troubleshooting Installation](#-troubleshooting-installation) section below.
+
 ## 📖 Usage
 
 ### Quick Command Reference
@@ -363,7 +365,6 @@ Blacksmith automatically detects which package managers are available on your sy
 - **OS compatibility**: Checks if the set is compatible with your OS (can be overridden with `--force`)
 - **Manager filtering**: Respects `managers_supported` to limit which managers are considered
 
-
 ## 🍎 macOS Support (Future)
 
 macOS support is planned for a future release. While the codebase includes some macOS compatibility (OS detection, install scripts), full support is not yet available.
@@ -603,6 +604,109 @@ For feature requests, please:
 - Keep functions focused and small
 - Add comments for complex logic
 - Use meaningful variable and function names
+
+## 🔧 Troubleshooting Installation
+
+### Command Not Found After Installation
+
+If `blacksmith` is not recognized after installation, it's likely a PATH issue:
+
+**Linux/macOS (with `--user` install):**
+
+```bash
+# Add to your ~/.bashrc, ~/.zshrc, or ~/.profile:
+export PATH="$HOME/.local/bin:$PATH"
+
+# Then reload your shell:
+source ~/.bashrc  # or source ~/.zshrc
+```
+
+**Windows (with `--user` install):**
+
+```powershell
+# Find your user Scripts directory:
+python -m site --user-base
+
+# Add it to PATH (replace with your actual path):
+# Typically: %USERPROFILE%\AppData\Roaming\Python\Python3X\Scripts
+# Or: %LOCALAPPDATA%\Programs\Python\Python3X\Scripts
+
+# Then restart your terminal
+```
+
+**Alternative: Use a Virtual Environment (Recommended)**
+
+If you continue to have PATH issues, using a virtual environment is the most reliable option:
+
+```bash
+# Create and activate a virtual environment
+python -m venv blacksmith-env
+
+# Activate it:
+# Linux/macOS:
+source blacksmith-env/bin/activate
+# Windows:
+blacksmith-env\Scripts\activate
+
+# Install blacksmith
+pip install jdi-blacksmith
+
+# Now blacksmith will work as long as the venv is activated
+blacksmith --version
+```
+
+### Permission Errors (Global Installation)
+
+If you get permission errors when installing globally:
+
+**Linux/macOS:**
+
+```bash
+# Use sudo (not recommended for security):
+sudo pip install jdi-blacksmith
+
+# Better: Use --user flag (no sudo needed):
+pip install --user jdi-blacksmith
+```
+
+**Windows:**
+
+```powershell
+# Run PowerShell as Administrator, then:
+pip install jdi-blacksmith
+
+# Better: Use --user flag (no admin needed):
+pip install --user jdi-blacksmith
+```
+
+### Installation Works But Command Not Found
+
+If installation succeeds but the command isn't found:
+
+1. **Check if it's installed:**
+
+   ```bash
+   python -m blacksmith --version
+   ```
+
+2. **Find where pip installed the script:**
+
+   ```bash
+   # Linux/macOS:
+   python -m site --user-base
+   # Then check: <path>/bin/blacksmith
+   
+   # Windows:
+   python -m site --user-base
+   # Then check: <path>\Scripts\blacksmith.exe
+   ```
+
+3. **Verify the entry point:**
+
+   ```bash
+   pip show jdi-blacksmith
+   # Look for "Location:" and "Entry-points:"
+   ```
 
 ## 📄 License
 
