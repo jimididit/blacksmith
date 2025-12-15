@@ -1,5 +1,6 @@
 """Winget package manager implementation."""
 
+import re
 import subprocess
 import json
 from typing import List, Dict
@@ -147,47 +148,112 @@ class WingetManager(PackageManager):
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using winget."""
         try:
+            # Winget v1.12.350 and earlier don't support --output json
+            # Use text output and parse it
+            # Use UTF-8 encoding with error handling to avoid UnicodeDecodeError
             result = subprocess.run(
-                ["winget", "search", query, "--exact", "--output", "json"],
+                ["winget", "search", query],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',  # Replace invalid characters instead of failing
                 timeout=30,
                 shell=True
             )
-            if result.returncode != 0:
-                # Try without --exact for broader search
-                result = subprocess.run(
-                    ["winget", "search", query, "--output", "json"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    shell=True
-                )
             
             if result.returncode != 0:
+                # Check if it's just no results or an actual error
+                stderr_text = result.stderr or ""
+                stdout_text = result.stdout or ""
+                if "No package found" in stderr_text or "No package found" in stdout_text:
+                    return []
+                logger.warning(f"Winget search failed: {stderr_text}")
                 return []
             
-            try:
-                data = json.loads(result.stdout)
-                packages = []
-                for pkg in data.get('Sources', [{}])[0].get('Packages', [])[:limit]:
-                    packages.append({
-                        'name': pkg.get('PackageIdentifier', ''),
-                        'description': pkg.get('Description', '')
-                    })
-                return packages
-            except (json.JSONDecodeError, KeyError, IndexError):
-                # Fallback to text parsing
-                packages = []
-                for line in result.stdout.strip().split('\n')[2:limit+2]:  # Skip header
-                    parts = line.split()
-                    if parts:
-                        packages.append({
-                            'name': parts[0] if parts else '',
-                            'description': ' '.join(parts[1:]) if len(parts) > 1 else ''
-                        })
-                return packages
+            # Check if stdout is None or empty
+            if not result.stdout:
+                return []
+            
+            # Parse text output
+            # Format is typically:
+            # Name                    Id                          Version    Source
+            # ----                    --                          -------    ------
+            # Package Name            Publisher.PackageName       1.0.0      winget
+            packages = []
+            lines = result.stdout.strip().split('\n')
+            
+            # Find the header line (contains "Name" and "Id")
+            header_idx = -1
+            for i, line in enumerate(lines):
+                if 'Name' in line and 'Id' in line:
+                    header_idx = i
+                    break
+            
+            if header_idx == -1:
+                # No header found, try to parse anyway
+                # Look for lines that look like package entries
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('-') and not line.startswith('█'):
+                        # Check if it looks like a package line (has at least 2 words)
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            # First part might be name, second might be ID
+                            # Try to find Publisher.Package format
+                            pkg_id = None
+                            for part in parts:
+                                if '.' in part and len(part.split('.')) >= 2:
+                                    pkg_id = part
+                                    break
+                            
+                            if pkg_id:
+                                packages.append({
+                                    'name': pkg_id,
+                                    'description': ' '.join(parts[1:]) if len(parts) > 1 else ''
+                                })
+            else:
+                # Parse structured output
+                # Skip header and separator line (header_idx + 1 is separator, +2 is first data)
+                for line in lines[header_idx + 2:]:
+                    if not line:  # Check if line is None or empty before strip()
+                        continue
+                    line = line.strip()
+                    if not line or line.startswith('█') or line.startswith('▒') or line.startswith('-'):
+                        # Skip progress bars, empty lines, and separators
+                        continue
+                    
+                    # Parse the line - format is space-separated with variable spacing
+                    # Name       Id                     Version  Match     Source
+                    # cURL       cURL.cURL              8.17.0.4           winget
+                    # Split on multiple spaces (2 or more) to get columns
+                    parts = re.split(r'\s{2,}', line)
+                    
+                    if len(parts) >= 2:
+                        pkg_name = parts[0].strip()  # First column is name
+                        pkg_id = parts[1].strip()    # Second column is ID
+                        
+                        # Get description (use name if available, or version if present)
+                        description = pkg_name
+                        if len(parts) >= 3:
+                            # Third column is usually version, can use as description
+                            version = parts[2].strip()
+                            if version and version != 'Unknown':
+                                description = f"{pkg_name} ({version})"
+                        
+                        if pkg_id:
+                            packages.append({
+                                'name': pkg_id,
+                                'description': description
+                            })
+                            
+                            if len(packages) >= limit:
+                                break
+            
+            return packages[:limit]
         except (FileNotFoundError, subprocess.TimeoutExpired) as e:
             logger.error(f"Winget search failed: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Winget search parsing failed: {e}")
             return []
 

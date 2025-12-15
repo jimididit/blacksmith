@@ -1,7 +1,7 @@
 """UI helpers using Rich for beautiful terminal output."""
 
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
@@ -120,4 +120,128 @@ def create_progress() -> Progress:
         TaskProgressColumn(),
         console=console,
     )
+
+
+def format_os_badge(os_name: str) -> str:
+    """
+    Format OS name as a badge/emoji.
+    
+    Args:
+        os_name: OS name (windows, linux, macos, darwin)
+        
+    Returns:
+        Emoji or abbreviation for the OS
+    """
+    os_name_lower = os_name.lower()
+    if os_name_lower == "windows":
+        return "🪟"
+    elif os_name_lower in ["linux"]:
+        return "🐧"
+    elif os_name_lower in ["macos", "darwin"]:
+        return "🍎"
+    else:
+        return os_name[:3].upper()
+
+
+def format_os_compatibility(
+    target_os_list: Optional[List[str]],
+    current_os: str,
+    show_checkmark: bool = True
+) -> str:
+    """
+    Format OS compatibility badges with current OS indicator.
+    
+    Args:
+        target_os_list: List of target OS names
+        current_os: Current OS name (normalized)
+        show_checkmark: Whether to show checkmark for compatible OS
+        
+    Returns:
+        Formatted OS compatibility string with Rich markup
+    """
+    if not target_os_list:
+        return "[dim]?[/dim]"  # Unknown OS compatibility
+    
+    # Normalize OS names
+    target_os_normalized = [os_name.lower() for os_name in target_os_list]
+    if "darwin" in target_os_normalized or "macos" in target_os_normalized:
+        target_os_normalized = [os_name for os_name in target_os_normalized if os_name not in ["darwin", "macos"]]
+        target_os_normalized.append("macos")
+    
+    # Create badges
+    os_badges = [format_os_badge(os_name) for os_name in target_os_normalized]
+    os_compat = " ".join(os_badges)
+    
+    # Check compatibility
+    if current_os in target_os_normalized:
+        if show_checkmark:
+            return f"[bold #44FFD1]{os_compat}[/bold #44FFD1] ✓"
+        else:
+            return f"[bold #44FFD1]{os_compat}[/bold #44FFD1]"
+    else:
+        return f"[dim]{os_compat}[/dim]"
+
+
+def format_manager_preferences(
+    preferred_managers: Optional[Dict[str, List[str]]],
+    current_os: str,
+    max_display: int = 2
+) -> str:
+    """
+    Format manager preferences for display.
+    
+    Args:
+        preferred_managers: Dict of OS to manager list
+        current_os: Current OS name (normalized)
+        max_display: Maximum number of managers to show before truncating
+        
+    Returns:
+        Formatted manager preferences string
+    """
+    if not preferred_managers:
+        return "—"
+    
+    if current_os in preferred_managers:
+        managers = preferred_managers[current_os]
+        if len(managers) <= max_display:
+            return ", ".join(managers)
+        else:
+            return ", ".join(managers[:max_display]) + "..."
+    else:
+        # Show first OS's managers if current OS not found
+        first_os = list(preferred_managers.keys())[0]
+        managers = preferred_managers[first_os]
+        if len(managers) <= max_display:
+            return ", ".join(managers)
+        else:
+            return ", ".join(managers[:max_display]) + "..."
+
+
+def format_os_status(
+    target_os_list: Optional[List[str]],
+    current_os: str
+) -> Tuple[str, str]:
+    """
+    Get OS compatibility status and color.
+    
+    Args:
+        target_os_list: List of target OS names
+        current_os: Current OS name (normalized)
+        
+    Returns:
+        Tuple of (status_text, color_hex)
+    """
+    if not target_os_list:
+        return ("Not specified", "#888888")
+    
+    # Normalize OS names
+    target_os_normalized = [os_name.lower() for os_name in target_os_list]
+    if "darwin" in target_os_normalized or "macos" in target_os_normalized:
+        target_os_normalized = [os_name for os_name in target_os_normalized if os_name not in ["darwin", "macos"]]
+        target_os_normalized.append("macos")
+    
+    if current_os in target_os_normalized:
+        return ("✓ Compatible", "#44FFD1")
+    else:
+        return ("✗ Not compatible", "#FF6B6B")
 

@@ -47,12 +47,38 @@ def parse_config(config_data: Dict[str, Any]) -> Dict[str, Any]:
         config_data: Raw config dictionary
         
     Returns:
-        Parsed config dictionary
+        Parsed config dictionary with defaults applied
     """
+    # Normalize target_os to lowercase list
+    target_os = config_data.get("target_os")
+    if target_os is None:
+        # Default: current OS (will be set at runtime if needed)
+        target_os_list = None
+    elif isinstance(target_os, str):
+        target_os_list = [target_os.lower()]
+    else:
+        target_os_list = [os_name.lower() for os_name in target_os]
+    
+    # Normalize preferred_managers keys to lowercase
+    preferred_managers = config_data.get("preferred_managers")
+    if preferred_managers:
+        preferred_managers = {
+            os_name.lower(): [mgr.lower() for mgr in managers]
+            for os_name, managers in preferred_managers.items()
+        }
+    
+    # Normalize managers_supported to lowercase list
+    managers_supported = config_data.get("managers_supported")
+    if managers_supported:
+        managers_supported = [mgr.lower() for mgr in managers_supported]
+    
     parsed = {
         "name": config_data.get("name", "Unnamed Set"),
         "description": config_data.get("description", ""),
         "packages": config_data.get("packages", []),
+        "target_os": target_os_list,
+        "preferred_managers": preferred_managers,
+        "managers_supported": managers_supported,
     }
     
     return parsed
