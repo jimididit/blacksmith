@@ -262,7 +262,8 @@ jobs:
           pip install --upgrade twine packaging
           # Verify package metadata before upload
           twine check dist/*
-          twine upload dist/*
+          # Upload to PyPI (skip if file already exists)
+          twine upload dist/* --skip-existing
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
