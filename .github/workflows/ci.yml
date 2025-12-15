@@ -326,7 +326,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          name: Blacksmith ${{ github.ref_name }}
           body: ${{ steps.final_body.outputs.body }}
           files: dist/*
           draft: false
