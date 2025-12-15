@@ -3,7 +3,7 @@
 > A cross-platform CLI tool that automates the installation of development and cybersecurity tools after a fresh OS install.
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/jimididit/blacksmith/releases)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/jimididit/blacksmith/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/jimididit/blacksmith)
 [![GitHub](https://img.shields.io/badge/GitHub-jimididit%2Fblacksmith-blue.svg)](https://github.com/jimididit/blacksmith)
@@ -12,13 +12,17 @@
 
 - 🎯 **Pre-made tool sets** - Choose from curated sets of development or cybersecurity tools
 - 🛠️ **Custom configurations** - Create your own sets or use custom config files
-- 🔍 **Package search** - Search for packages across all package managers with real-time results
-- 🌐 **Cross-platform** - Works seamlessly on Linux and Windows
+- 🔍 **Unified package search** - Search across all selected managers simultaneously with multi-select support
+- 🌐 **Cross-platform sets** - Define sets that work on Windows, Linux, or both with OS-specific manager preferences
 - 📦 **Multiple package managers** - Supports apt, yum, pacman, winget, chocolatey, scoop, snap, and flatpak
+- 🎯 **Smart manager selection** - Automatically uses preferred package managers with intelligent fallback
 - ✨ **Beautiful CLI** - Clean, intuitive interface with progress indicators and helpful feedback
 - 🎨 **Custom color scheme** - Elegant purple and cyan theme
 - ⚡ **Fast installation** - Automatically detects and uses the best package manager for each tool
 - ✅ **Package validation** - Verify package names before installation
+- 📤 **Export functionality** - Export sets to native package manager formats (Winget JSON, Chocolatey XML, etc.)
+- 🔄 **Update support** - Check for installed packages and update them when available
+- 📊 **Set information** - View detailed information about sets including OS compatibility and manager preferences
 
 ## 📋 Prerequisites
 
@@ -64,7 +68,7 @@ git clone https://github.com/jimididit/blacksmith.git
 cd blacksmith
 ```
 
-2. Install using pip:
+1. Install using pip:
 
 ```bash
 # Global installation (recommended)
@@ -74,13 +78,44 @@ pip install -e .
 pip install --user -e .
 ```
 
-3. Verify installation:
+1. Verify installation:
 
 ```bash
 blacksmith --version
 ```
 
 ## 📖 Usage
+
+### Quick Command Reference
+
+```bash
+# Interactive mode (shows menu)
+blacksmith
+
+# List available sets with OS compatibility
+blacksmith list
+
+# View detailed set information
+blacksmith info <set_name>
+
+# Install a set
+blacksmith install <set_name>
+
+# Create a custom set
+blacksmith create
+
+# Search for packages
+blacksmith search <query> [--manager <name>]
+
+# Export set to native format
+blacksmith export <set_name> --format <format>
+
+# Validate a config file
+blacksmith validate <path>
+
+# Uninstall Blacksmith
+blacksmith uninstall
+```
 
 ### Interactive Mode
 
@@ -91,6 +126,22 @@ blacksmith
 ```
 
 This will display a beautiful banner and an interactive menu to select and install tool sets.
+
+### List Available Sets
+
+View all available sets with OS compatibility indicators:
+
+```bash
+blacksmith list
+```
+
+The list shows:
+
+- Set name and description
+- OS compatibility badges (🪟 Windows, 🐧 Linux, 🍎 macOS)
+- Preferred package managers
+- Package count
+- Compatibility status with your current OS
 
 ### Install Pre-made Sets
 
@@ -113,14 +164,22 @@ blacksmith install --file path/to/your-config.yaml
 ### Create Your Own Set
 
 ```bash
+# Standard mode (cross-platform, multi-manager)
 blacksmith create
+
+# Advanced mode (single-OS, single-manager sets)
+blacksmith create --advanced
 ```
 
 This launches an interactive wizard to create a custom tool set configuration. The wizard includes:
 
-- **Package search**: Search for packages across all available package managers
+- **OS selection**: Choose Windows, Linux, or both for cross-platform sets
+- **Manager selection**: Select which package managers to target for each OS
+- **Unified search**: Search across all selected managers simultaneously - see results from all managers at once
+- **Multi-select**: Select packages from multiple managers in one go using checkboxes
+- **Smart grouping**: Automatically groups the same package from different managers
 - **Real-time validation**: Verify package names before adding them
-- **Interactive selection**: Choose from search results with descriptions
+- **Export ready**: Sets are saved with OS compatibility and manager preferences for optimal installation
 
 ### Search for Packages
 
@@ -130,14 +189,61 @@ Search for packages across all available package managers:
 # Search across all managers
 blacksmith search docker
 
-# Search in a specific package manager
+# Search in a specific package manager (supports aliases)
 blacksmith search git --manager winget
+blacksmith search git --manager choco    # Alias for chocolatey
 
 # Limit results
 blacksmith search python --limit 5
 ```
 
-This is especially useful when creating custom sets, as it ensures you use the correct package names for each package manager. The search queries each package manager directly, so results are always up-to-date and accurate.
+**Features:**
+
+- **Real-time results**: Queries each package manager directly for up-to-date results
+- **Manager aliases**: Use `choco` for `chocolatey`, `dnf` for `yum`, etc.
+- **OS-aware errors**: Clear messages when requesting OS-specific managers (e.g., `apt` on Windows)
+- **Unified display**: Results grouped by manager with descriptions
+
+This is especially useful when creating custom sets, as it ensures you use the correct package names for each package manager.
+
+### View Set Information
+
+Get detailed information about a set, including OS compatibility and manager preferences:
+
+```bash
+# View info about a pre-made set
+blacksmith info development
+blacksmith info cybersecurity
+
+# View info about a custom config file
+blacksmith info --file path/to/config.yaml
+```
+
+### Export Sets
+
+Export sets to native package manager formats for use outside of Blacksmith:
+
+```bash
+# Export to Winget JSON format
+blacksmith export development --format winget
+
+# Export to Chocolatey packages.config
+blacksmith export development --format chocolatey
+
+# Export to Apt text list
+blacksmith export development --format apt
+
+# Export with custom output file
+blacksmith export development --format winget --output my-packages.json
+```
+
+**Supported formats:**
+
+- `winget` - JSON array of package IDs
+- `chocolatey` / `choco` - XML packages.config format
+- `apt` - Plain text list
+- `pacman` - Plain text list
+- `scoop` - JSON array
 
 ### Validate Configuration Files
 
@@ -145,10 +251,17 @@ This is especially useful when creating custom sets, as it ensures you use the c
 blacksmith validate path/to/config.yaml
 ```
 
-### Skip Already Installed Packages
+### Installation Options
 
 ```bash
+# Skip already installed packages
 blacksmith install development --skip-installed
+
+# Prefer a specific package manager (overrides set preferences)
+blacksmith install development --prefer winget
+
+# Force installation even if OS doesn't match set's target_os
+blacksmith install development --force
 ```
 
 ### Uninstall Blacksmith
@@ -167,7 +280,9 @@ irm https://raw.githubusercontent.com/jimididit/blacksmith/main/uninstall.ps1 | 
 
 ## 📝 Configuration Format
 
-Blacksmith uses YAML configuration files. Here's an example:
+Blacksmith uses YAML configuration files with support for cross-platform sets. Here's an example:
+
+### Basic Format (Backward Compatible)
 
 ```yaml
 name: "My Custom Set"
@@ -189,6 +304,38 @@ packages:
       winget: Docker.DockerDesktop
 ```
 
+### Advanced Format (Cross-Platform)
+
+```yaml
+name: "Cross-Platform Dev Tools"
+description: "Development tools for Windows and Linux"
+target_os: ["windows", "linux"]  # OS compatibility
+preferred_managers:              # Manager preferences per OS
+  windows: ["winget", "chocolatey"]
+  linux: ["apt", "flatpak"]
+managers_supported:              # Limit to specific managers
+  - winget
+  - chocolatey
+  - apt
+  - flatpak
+packages:
+  - name: git
+    managers:
+      winget: Git.Git
+      chocolatey: git
+      apt: git
+      flatpak: org.gnome.gitg
+```
+
+**Configuration Fields:**
+
+- `name` (required) - Set name
+- `description` (optional) - Set description
+- `target_os` (optional) - List of target OSes: `["windows"]`, `["linux"]`, or `["windows", "linux"]`
+- `preferred_managers` (optional) - Dictionary mapping OS to preferred manager order
+- `managers_supported` (optional) - List of managers to limit installation to
+- `packages` (required) - List of packages with manager-specific IDs
+
 ## 📦 Supported Package Managers
 
 ### Linux
@@ -205,7 +352,16 @@ packages:
 - **chocolatey** - Windows package manager
 - **scoop** - Command-line installer
 
-Blacksmith automatically detects which package managers are available on your system and uses the appropriate one for each tool.
+**Smart Manager Selection:**
+
+Blacksmith automatically detects which package managers are available on your system and uses intelligent selection:
+
+- **Preference-based**: Uses `preferred_managers` from the set configuration if specified
+- **OS-specific defaults**: Falls back to sensible defaults (e.g., `winget` > `chocolatey` > `scoop` on Windows)
+- **Fallback logic**: If preferred manager isn't available, tries the next one in order
+- **OS compatibility**: Checks if the set is compatible with your OS (can be overridden with `--force`)
+- **Manager filtering**: Respects `managers_supported` to limit which managers are considered
+
 
 ## 🍎 macOS Support (Future)
 
@@ -266,11 +422,25 @@ blacksmith/
 ├── blacksmith/
 │   ├── cli.py              # Main CLI interface
 │   ├── config/             # Configuration system
+│   │   ├── loader.py       # Config file loading
+│   │   ├── parser.py       # YAML parsing
+│   │   ├── preferences.py  # Manager preference system
+│   │   └── validator.py    # Config validation
+│   ├── export/             # Export functionality
+│   │   ├── base.py         # Base exporter class
+│   │   ├── winget.py       # Winget JSON exporter
+│   │   ├── chocolatey.py   # Chocolatey XML exporter
+│   │   ├── apt.py          # Apt list exporter
+│   │   ├── pacman.py       # Pacman list exporter
+│   │   └── scoop.py        # Scoop JSON exporter
 │   ├── package_managers/   # Package manager implementations
 │   ├── sets/               # Pre-made tool sets
 │   └── utils/              # Utility modules
+│       ├── os_detector.py  # OS detection
+│       └── ui.py           # UI helpers (Rich)
 ├── tests/                  # Test suite
 ├── scripts/                # Helper scripts
+│   └── bump_version.py     # Version bumping script
 ├── install.sh              # Installation script
 ├── uninstall.sh            # Uninstallation script
 └── README.md
@@ -384,8 +554,10 @@ To add support for a new package manager:
    - `install(packages)` - Install packages
    - `is_installed(package)` - Check if a package is installed
    - `search(query)` - Search for packages
+   - `update_package(package)` - Update a single package (optional but recommended)
 4. Register it in `blacksmith/package_managers/detector.py`
-5. Add tests in `tests/test_package_managers.py`
+5. Add it to the default preferences in `blacksmith/config/preferences.py` if applicable
+6. Add tests in `tests/test_package_managers.py`
 
 ### Adding New Tool Sets
 
@@ -394,8 +566,13 @@ To add a new pre-made tool set:
 1. Create a new YAML file in `blacksmith/sets/` (e.g., `gaming.yaml`)
 2. Follow the existing format (see `blacksmith/sets/development.yaml` for reference)
 3. Include package names for all supported package managers
-4. Ensure YAML syntax is valid: `yamllint blacksmith/sets/gaming.yaml`
-5. Test loading the set: `blacksmith list` should show your new set
+4. Optionally add cross-platform fields:
+   - `target_os` - List of target OSes (e.g., `["windows", "linux"]`)
+   - `preferred_managers` - OS-specific manager preferences
+   - `managers_supported` - Limit to specific managers
+5. Ensure YAML syntax is valid: `yamllint blacksmith/sets/gaming.yaml`
+6. Test loading the set: `blacksmith list` should show your new set
+7. Test the `info` command: `blacksmith info gaming` should display correctly
 
 ### Reporting Bugs
 
