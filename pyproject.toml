@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jdi-blacksmith"
-version = "0.2.1"
+version = "0.2.2"
 description = "A cross-platform CLI tool for installing development and cybersecurity tools"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -36,7 +36,14 @@ dependencies = [
 blacksmith = "blacksmith.cli:main"
 
 [tool.setuptools]
-packages = ["blacksmith", "blacksmith.sets"]
+packages = [
+    "blacksmith",
+    "blacksmith.config",
+    "blacksmith.export",
+    "blacksmith.package_managers",
+    "blacksmith.sets",
+    "blacksmith.utils",
+]
 
 [tool.setuptools.package-data]
 blacksmith = ["sets/*.yaml"]
