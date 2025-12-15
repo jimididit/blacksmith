@@ -3,7 +3,7 @@
 > A cross-platform CLI tool that automates the installation of development and cybersecurity tools after a fresh OS install.
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/jimididit/blacksmith/releases)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/jimididit/blacksmith/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/jimididit/blacksmith)
 [![GitHub](https://img.shields.io/badge/GitHub-jimididit%2Fblacksmith-blue.svg)](https://github.com/jimididit/blacksmith)
