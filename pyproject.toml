@@ -9,7 +9,7 @@ description = "A cross-platform CLI tool for installing development and cybersec
 readme = "README.md"
 requires-python = ">=3.8"
 license = "Apache-2.0"
-license-files = []  # Disable automatic LICENSE file detection
+license-files = ["LICENSE"]
 authors = [
     {name = "jimididit", email = "jimi.did.it@protonmail.com"}
 ]

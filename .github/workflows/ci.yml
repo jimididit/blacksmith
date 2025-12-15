@@ -191,9 +191,9 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
-          # Ensure setuptools >=77.0.0 is available for build
-          pip install "setuptools>=77.0.0"
+          pip install --upgrade build twine packaging
+          # Ensure latest setuptools is available for build (80.9.0+)
+          pip install --upgrade "setuptools>=77.0.0"
       
       - name: Clean previous builds
         run: |
@@ -204,7 +204,7 @@ jobs:
         run: |
           echo "Checking pyproject.toml configuration..."
           grep -q 'setuptools>=77.0.0' pyproject.toml || (echo "ERROR: setuptools version not >=77.0.0" && exit 1)
-          grep -q 'license-files = \[\]' pyproject.toml || (echo "ERROR: license-files not set to []" && exit 1)
+          grep -q 'license-files = \["LICENSE"\]' pyproject.toml || (echo "ERROR: license-files not set to [\"LICENSE\"]" && exit 1)
           echo "✓ pyproject.toml configuration looks correct"
       
       - name: Build package
@@ -221,16 +221,16 @@ jobs:
           if [ -f /tmp/package-inspect/*.dist-info/METADATA ]; then
             echo "=== METADATA contents ==="
             cat /tmp/package-inspect/*.dist-info/METADATA | grep -E "(License|license)" || echo "No license fields found in METADATA"
-            echo "=== Checking for license-file ==="
-            if grep -q "license-file" /tmp/package-inspect/*.dist-info/METADATA; then
-              echo "ERROR: license-file found in METADATA!"
+            echo "=== Checking for License-Expression ==="
+            if ! grep -q "^License-Expression: Apache-2.0" /tmp/package-inspect/*.dist-info/METADATA; then
+              echo "ERROR: License-Expression not found or incorrect in METADATA!"
               exit 1
             fi
-            if grep -q "license-expression" /tmp/package-inspect/*.dist-info/METADATA; then
-              echo "ERROR: license-expression found in METADATA!"
+            if ! grep -q "^License-File: LICENSE" /tmp/package-inspect/*.dist-info/METADATA; then
+              echo "ERROR: License-File not found or incorrect in METADATA!"
               exit 1
             fi
-            echo "✓ No invalid license fields found"
+            echo "✓ License metadata fields are correct"
           fi
       
       - name: Upload artifacts
@@ -259,7 +259,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          pip install --upgrade twine
+          pip install --upgrade twine packaging
           # Verify package metadata before upload
           twine check dist/*
           twine upload dist/*
