@@ -50,7 +50,27 @@ def show_banner():
     
     # Get system info
     os_name = platform.system()
-    os_version = platform.release()
+    
+    # Properly detect Windows version (Windows 11 has build >= 22000)
+    if os_name == "Windows":
+        try:
+            # platform.version() returns something like "10.0.22000.1234"
+            # Windows 11 has build number >= 22000
+            version_info = platform.version().split('.')
+            if len(version_info) >= 3:
+                build_number = int(version_info[2])
+                if build_number >= 22000:
+                    os_version = "11"
+                else:
+                    os_version = "10"
+            else:
+                os_version = platform.release()
+        except (ValueError, IndexError):
+            # Fallback to release() if parsing fails
+            os_version = platform.release()
+    else:
+        os_version = platform.release()
+    
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     
     # Create banner text with custom colors
