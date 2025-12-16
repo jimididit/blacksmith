@@ -80,7 +80,7 @@ def show_banner():
 [bold #44FFD1]OS:[/bold #44FFD1] {os_name} {os_version}
 [bold #44FFD1]Python:[/bold #44FFD1] {python_version}
 
-[dim #5A3A6C]Cross-platform development tool installer[/dim #5A3A6C]
+[dim #5A3A6C]Cross-platform tool installer for development, cybersecurity, and more[/dim #5A3A6C]
     """
     
     console.print(banner_text)
@@ -92,7 +92,7 @@ def show_welcome():
     show_banner()
     
     welcome_text = """
-Blacksmith helps you quickly set up your development environment
+Blacksmith helps you quickly set up your environment
 by installing tools and applications using your system's package managers.
 
 Select a pre-made set or use your own configuration file.
