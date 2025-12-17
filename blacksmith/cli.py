@@ -1474,6 +1474,25 @@ rm -f "$SCRIPT_PATH"
     
     # Remove virtual environment if it exists (with confirmation)
     if venv_exists:
+        # Check if we're running from within this venv
+        current_python = sys.executable
+        venv_python = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
+        running_from_venv = False
+        
+        if os.path.exists(venv_python):
+            try:
+                # Check if current Python is from this venv
+                if os.path.exists(current_python):
+                    if os.path.samefile(current_python, venv_python):
+                        running_from_venv = True
+                    # Also check if current_python is inside venv_path
+                    elif os.path.commonpath([os.path.abspath(current_python), os.path.abspath(venv_path)]) == os.path.abspath(venv_path):
+                        running_from_venv = True
+            except (OSError, ValueError):
+                # If samefile fails or paths can't be compared, check if venv_path is in current_python path
+                if venv_path in os.path.abspath(current_python):
+                    running_from_venv = True
+        
         remove_venv = True
         if not yes:
             remove_venv = questionary.confirm(
@@ -1482,13 +1501,99 @@ rm -f "$SCRIPT_PATH"
             ).ask()
         
         if remove_venv:
-            try:
-                print_info(f"Removing virtual environment: {venv_path}")
-                shutil.rmtree(venv_path)
-                print_success("Virtual environment removed successfully.")
-            except Exception as e:
-                print_warning(f"Could not remove virtual environment: {e}")
-                print_info(f"You may need to manually delete: {venv_path}")
+            if running_from_venv:
+                print_warning("Cannot remove virtual environment while it's active.")
+                print_info("Creating cleanup script to delete it after you deactivate and close this terminal...")
+                
+                try:
+                    # Create cleanup script for venv deletion
+                    if os.name == 'nt':  # Windows
+                        script_content = f"""
+# Wait for the process to fully exit
+Start-Sleep -Seconds 2
+
+# Try to delete the virtual environment
+$venvPath = '{venv_path}'
+if (Test-Path $venvPath) {{
+    try {{
+        Remove-Item $venvPath -Recurse -Force -ErrorAction Stop
+        Write-Host "Deleted virtual environment: $venvPath"
+    }} catch {{
+        Write-Host "Could not delete virtual environment: $venvPath"
+        Write-Host "Error: $_"
+        Write-Host "You may need to manually delete it after deactivating the venv."
+    }}
+}}
+
+# Delete this script itself
+$scriptPath = $MyInvocation.MyCommand.Path
+Start-Sleep -Seconds 1
+if (Test-Path $scriptPath) {{
+    Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
+}}
+"""
+                        cleanup_script = os.path.join(tempfile.gettempdir(), f"blacksmith_venv_cleanup_{os.getpid()}.ps1")
+                        with open(cleanup_script, 'w', encoding='utf-8') as f:
+                            f.write(script_content)
+                        
+                        # Launch cleanup script in background
+                        subprocess.Popen(
+                            ['powershell', '-ExecutionPolicy', 'Bypass', '-File', cleanup_script],
+                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                    else:  # Linux/Mac
+                        script_content = f"""#!/bin/bash
+# Wait for the process to fully exit
+sleep 2
+
+# Try to delete the virtual environment
+VENV_PATH='{venv_path}'
+if [ -d "$VENV_PATH" ]; then
+    rm -rf "$VENV_PATH" && echo "Deleted virtual environment: $VENV_PATH" || echo "Could not delete virtual environment: $VENV_PATH"
+    echo "You may need to manually delete it after deactivating the venv."
+fi
+
+# Delete this script itself
+SCRIPT_PATH="$0"
+sleep 1
+rm -f "$SCRIPT_PATH"
+"""
+                        cleanup_script = os.path.join(tempfile.gettempdir(), f"blacksmith_venv_cleanup_{os.getpid()}.sh")
+                        with open(cleanup_script, 'w', encoding='utf-8') as f:
+                            f.write(script_content)
+                        os.chmod(cleanup_script, 0o755)
+                        
+                        # Launch cleanup script in background
+                        subprocess.Popen(
+                            ['bash', cleanup_script],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                    
+                    print_success("Cleanup script created.")
+                    print_info("To complete venv removal:")
+                    print_info("  1. Deactivate the virtual environment (run 'deactivate')")
+                    print_info("  2. Close this terminal")
+                    print_info(f"  3. The cleanup script will automatically delete: {venv_path}")
+                    print_info("  Or manually delete it: " + ("rm -rf" if os.name != 'nt' else "Remove-Item -Recurse -Force") + f" {venv_path}")
+                except Exception as e:
+                    logger.debug(f"Failed to create cleanup script: {e}")
+                    print_warning("Could not create automatic cleanup script.")
+                    print_info("To remove the virtual environment:")
+                    print_info("  1. Deactivate it: deactivate")
+                    print_info("  2. Close this terminal")
+                    print_info(f"  3. Manually delete: {venv_path}")
+            else:
+                # Not running from venv, safe to delete
+                try:
+                    print_info(f"Removing virtual environment: {venv_path}")
+                    shutil.rmtree(venv_path)
+                    print_success("Virtual environment removed successfully.")
+                except Exception as e:
+                    print_warning(f"Could not remove virtual environment: {e}")
+                    print_info(f"You may need to manually delete: {venv_path}")
         else:
             print_info("Virtual environment left intact.")
     
