@@ -3,7 +3,9 @@
 # Blacksmith Installation Script
 # This script installs Blacksmith from a GitHub repository
 
-set -e  # Exit on error
+# Note: We use 'set -e' carefully - some commands may fail intentionally
+# and we handle them with || or explicit error checking
+set -e
 
 # Colors for output
 RED='\033[0;31m'
@@ -107,21 +109,20 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1
     exit 1
 fi
 
-# Check for pip
-if ! command -v pip3 &> /dev/null && ! command -v pip &> /dev/null; then
+# Check for pip (use python -m pip to avoid launcher issues)
+echo -e "${BLUE}Checking pip...${NC}"
+if ${PYTHON_CMD} -m pip --version &> /dev/null; then
+    PIP_VERSION=$(${PYTHON_CMD} -m pip --version 2>&1)
+    echo -e "${GREEN}✓${NC} Found pip: ${PIP_VERSION}"
+else
     echo -e "${YELLOW}⚠${NC} pip not found. Attempting to install..."
     ${PYTHON_CMD} -m ensurepip --upgrade || {
         echo -e "${RED}✗ Could not install pip. Please install pip manually.${NC}"
         exit 1
     }
+    PIP_VERSION=$(${PYTHON_CMD} -m pip --version 2>&1)
+    echo -e "${GREEN}✓${NC} Found pip: ${PIP_VERSION}"
 fi
-
-PIP_CMD="pip3"
-if ! command -v pip3 &> /dev/null; then
-    PIP_CMD="pip"
-fi
-
-echo -e "${GREEN}✓${NC} Found pip: $(${PIP_CMD} --version)"
 
 # Create temporary directory
 TEMP_DIR=$(mktemp -d)
@@ -131,36 +132,62 @@ echo ""
 echo -e "${BLUE}Downloading Blacksmith...${NC}"
 
 # Clone or download the repository
+GIT_SUCCESS=false
 if command -v git &> /dev/null; then
     echo "Cloning repository from ${REPO_URL}..."
-    git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TEMP_DIR}/blacksmith" || {
+    if git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TEMP_DIR}/blacksmith" 2>&1; then
+        GIT_SUCCESS=true
+    else
         echo -e "${YELLOW}⚠${NC} Git clone failed, trying direct download..."
-        # Fallback: download as zip (GitHub specific)
-        if [[ "$REPO_URL" == *"github.com"* ]]; then
-            REPO_NAME=$(echo "$REPO_URL" | sed 's/.*github.com\///' | sed 's/\.git$//')
-            DOWNLOAD_URL="https://github.com/${REPO_NAME}/archive/refs/heads/${BRANCH}.zip"
+    fi
+fi
+
+# Fallback to direct download if git failed or not available
+if [ "$GIT_SUCCESS" = false ]; then
+    echo -e "${BLUE}Downloading repository as ZIP...${NC}"
+    # Check for required tools for direct download
+    if [[ "$REPO_URL" == *"github.com"* ]]; then
+        # Check for curl or wget
+        HAS_CURL=false
+        HAS_WGET=false
+        if command -v curl &> /dev/null; then
+            HAS_CURL=true
+        elif command -v wget &> /dev/null; then
+            HAS_WGET=true
+        else
+            echo -e "${RED}✗ Neither curl nor wget found. Please install one of them or install git.${NC}"
+            exit 1
+        fi
+        
+        # Check for unzip
+        if ! command -v unzip &> /dev/null; then
+            echo -e "${RED}✗ unzip not found. Please install unzip or install git.${NC}"
+            exit 1
+        fi
+        
+        REPO_NAME=$(echo "$REPO_URL" | sed 's/.*github.com\///' | sed 's/\.git$//')
+        DOWNLOAD_URL="https://github.com/${REPO_NAME}/archive/refs/heads/${BRANCH}.zip"
+        
+        if [ "$HAS_CURL" = true ]; then
             curl -L "${DOWNLOAD_URL}" -o "${TEMP_DIR}/blacksmith.zip" || {
                 echo -e "${RED}✗ Failed to download Blacksmith${NC}"
                 exit 1
             }
-            unzip -q "${TEMP_DIR}/blacksmith.zip" -d "${TEMP_DIR}"
-            mv "${TEMP_DIR}/blacksmith-${BRANCH}" "${TEMP_DIR}/blacksmith"
         else
-            echo -e "${RED}✗ Could not download Blacksmith. Please install git or provide a direct download URL.${NC}"
-            exit 1
+            wget -O "${TEMP_DIR}/blacksmith.zip" "${DOWNLOAD_URL}" || {
+                echo -e "${RED}✗ Failed to download Blacksmith${NC}"
+                exit 1
+            }
         fi
-    }
-else
-    echo -e "${YELLOW}⚠${NC} Git not found. Attempting direct download..."
-    if [[ "$REPO_URL" == *"github.com"* ]]; then
-        REPO_NAME=$(echo "$REPO_URL" | sed 's/.*github.com\///' | sed 's/\.git$//')
-        DOWNLOAD_URL="https://github.com/${REPO_NAME}/archive/refs/heads/${BRANCH}.zip"
-        curl -L "${DOWNLOAD_URL}" -o "${TEMP_DIR}/blacksmith.zip" || {
-            echo -e "${RED}✗ Failed to download Blacksmith${NC}"
+        
+        unzip -q "${TEMP_DIR}/blacksmith.zip" -d "${TEMP_DIR}" || {
+            echo -e "${RED}✗ Failed to extract Blacksmith${NC}"
             exit 1
         }
-        unzip -q "${TEMP_DIR}/blacksmith.zip" -d "${TEMP_DIR}"
-        mv "${TEMP_DIR}/blacksmith-${BRANCH}" "${TEMP_DIR}/blacksmith"
+        mv "${TEMP_DIR}/blacksmith-${BRANCH}" "${TEMP_DIR}/blacksmith" || {
+            echo -e "${RED}✗ Failed to prepare installation directory${NC}"
+            exit 1
+        }
     else
         echo -e "${RED}✗ Git is required for non-GitHub repositories. Please install git.${NC}"
         exit 1
@@ -185,25 +212,26 @@ case "${INSTALL_METHOD}" in
         echo "Creating virtual environment..."
         ${PYTHON_CMD} -m venv "${TEMP_DIR}/venv"
         source "${TEMP_DIR}/venv/bin/activate"
-        ${PIP_CMD} install --upgrade pip
-        ${PIP_CMD} install -e "${INSTALL_DIR}"
+        # In venv, use the venv's python directly
+        python -m pip install --upgrade pip
+        python -m pip install -e "${INSTALL_DIR}"
         echo -e "${GREEN}✓${NC} Blacksmith installed in virtual environment"
         echo -e "${YELLOW}⚠${NC} Remember to activate the virtual environment:"
         echo "  source ${TEMP_DIR}/venv/bin/activate"
         ;;
     user)
         echo "Installing for current user..."
-        ${PIP_CMD} install --upgrade pip
-        ${PIP_CMD} install --user -e "${INSTALL_DIR}"
+        ${PYTHON_CMD} -m pip install --upgrade pip
+        ${PYTHON_CMD} -m pip install --user -e "${INSTALL_DIR}"
         echo -e "${GREEN}✓${NC} Blacksmith installed for current user"
         ;;
     global)
         echo "Installing globally (may require sudo)..."
-        ${PIP_CMD} install --upgrade pip
+        ${PYTHON_CMD} -m pip install --upgrade pip
         if [ "$EUID" -eq 0 ]; then
-            ${PIP_CMD} install -e "${INSTALL_DIR}"
+            ${PYTHON_CMD} -m pip install -e "${INSTALL_DIR}"
         else
-            sudo ${PIP_CMD} install -e "${INSTALL_DIR}"
+            sudo ${PYTHON_CMD} -m pip install -e "${INSTALL_DIR}"
         fi
         echo -e "${GREEN}✓${NC} Blacksmith installed globally"
         ;;

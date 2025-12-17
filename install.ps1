@@ -112,25 +112,35 @@ if ([version]$versionOutput -lt [version]$requiredVersion) {
     exit 1
 }
 
-# Check for pip
-$pipCmd = $null
-if (Get-Command pip -ErrorAction SilentlyContinue) {
-    $pipCmd = "pip"
-} elseif (Get-Command pip3 -ErrorAction SilentlyContinue) {
-    $pipCmd = "pip3"
-} else {
-    Write-Host "⚠ pip not found. Attempting to install..." -ForegroundColor Yellow
-    & $pythonCmd -m ensurepip --upgrade
-    if (Get-Command pip -ErrorAction SilentlyContinue) {
-        $pipCmd = "pip"
+# Check for pip (use python -m pip to avoid launcher issues)
+Write-Host "Checking pip..." -ForegroundColor Blue
+try {
+    $pipVersion = & $pythonCmd -m pip --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
+    } else {
+        Write-Host "⚠ pip not found. Attempting to install..." -ForegroundColor Yellow
+        & $pythonCmd -m ensurepip --upgrade 2>&1 | Out-Null
+        $pipVersion = & $pythonCmd -m pip --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
+        } else {
+            Write-Host "✗ Could not install pip. Please install pip manually." -ForegroundColor Red
+            exit 1
+        }
+    }
+} catch {
+    Write-Host "✗ Error checking pip: $_" -ForegroundColor Red
+    Write-Host "Attempting to install pip..." -ForegroundColor Yellow
+    & $pythonCmd -m ensurepip --upgrade 2>&1 | Out-Null
+    $pipVersion = & $pythonCmd -m pip --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
     } else {
         Write-Host "✗ Could not install pip. Please install pip manually." -ForegroundColor Red
         exit 1
     }
 }
-
-$pipVersion = & $pipCmd --version
-Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
 
 # Create temporary directory
 $tempDir = Join-Path $env:TEMP "blacksmith-install-$(New-Guid)"
@@ -140,6 +150,7 @@ try {
     Write-Host ""
     Write-Host "Downloading Blacksmith..." -ForegroundColor Blue
 
+    $gitSuccess = $false
     # Check for git
     if (Get-Command git -ErrorAction SilentlyContinue) {
         Write-Host "Cloning repository..."
@@ -152,12 +163,23 @@ try {
             $branch = "main"
         }
         
-        & git clone --depth 1 --branch $branch $repoUrl "$tempDir\blacksmith" 2>&1 | Out-Null
+        $gitOutput = & git clone --depth 1 --branch $branch $repoUrl "$tempDir\blacksmith" 2>&1
         if ($LASTEXITCODE -ne 0) {
-            throw "Git clone failed"
+            Write-Host "⚠ Git clone failed: $gitOutput" -ForegroundColor Yellow
+            Write-Host "Falling back to direct download..." -ForegroundColor Yellow
+            # Fall through to direct download method
+        } else {
+            $installDir = Join-Path $tempDir "blacksmith"
+            if (Test-Path $installDir) {
+                Write-Host "✓ Downloaded Blacksmith" -ForegroundColor Green
+                $gitSuccess = $true
+            }
         }
-    } else {
-        Write-Host "⚠ Git not found. Attempting direct download..." -ForegroundColor Yellow
+    }
+    
+    # Fallback to direct download if git failed or not available
+    if (-not $gitSuccess) {
+        Write-Host "Downloading repository as ZIP..." -ForegroundColor Blue
         $repoUrl = $env:BLACKSMITH_REPO
         if (-not $repoUrl) {
             $repoUrl = "https://github.com/jimididit/blacksmith"
@@ -171,17 +193,21 @@ try {
         $downloadUrl = "https://github.com/$repoName/archive/refs/heads/$branch.zip"
         $zipFile = Join-Path $tempDir "blacksmith.zip"
         
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile
-        Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force
-        Move-Item "$tempDir\blacksmith-$branch" "$tempDir\blacksmith" -Force
+        try {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -UseBasicParsing
+            Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force
+            Move-Item "$tempDir\blacksmith-$branch" "$tempDir\blacksmith" -Force -ErrorAction Stop
+            Write-Host "✓ Downloaded Blacksmith" -ForegroundColor Green
+        } catch {
+            Write-Host "✗ Failed to download Blacksmith: $_" -ForegroundColor Red
+            throw "Download failed"
+        }
     }
 
     $installDir = Join-Path $tempDir "blacksmith"
     if (-not (Test-Path $installDir)) {
         throw "Installation directory not found"
     }
-
-    Write-Host "✓ Downloaded Blacksmith" -ForegroundColor Green
 
     # Determine install method
     $installMethod = $env:BLACKSMITH_INSTALL_METHOD
@@ -195,14 +221,14 @@ try {
     switch ($installMethod) {
         "user" {
             Write-Host "Installing for current user..."
-            & $pipCmd install --upgrade pip
-            & $pipCmd install --user -e $installDir
+            & $pythonCmd -m pip install --upgrade pip
+            & $pythonCmd -m pip install --user -e $installDir
             Write-Host "✓ Blacksmith installed for current user" -ForegroundColor Green
         }
         "global" {
             Write-Host "Installing globally (may require admin privileges)..."
-            & $pipCmd install --upgrade pip
-            & $pipCmd install -e $installDir
+            & $pythonCmd -m pip install --upgrade pip
+            & $pythonCmd -m pip install -e $installDir
             Write-Host "✓ Blacksmith installed globally" -ForegroundColor Green
         }
         default {
