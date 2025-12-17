@@ -112,34 +112,55 @@ if ([version]$versionOutput -lt [version]$requiredVersion) {
     exit 1
 }
 
-# Check for pip (use python -m pip to avoid launcher issues)
-Write-Host "Checking pip..." -ForegroundColor Blue
-try {
-    $pipVersion = & $pythonCmd -m pip --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
-    } else {
-        Write-Host "⚠ pip not found. Attempting to install..." -ForegroundColor Yellow
-        & $pythonCmd -m ensurepip --upgrade 2>&1 | Out-Null
+# Determine install method early (before pip check)
+$installMethod = $env:BLACKSMITH_INSTALL_METHOD
+if (-not $installMethod) {
+    $installMethod = "venv"  # Default to venv install for better isolation
+}
+
+# Check for pip only if not using venv (venv includes pip automatically)
+if ($installMethod -ne "venv") {
+    Write-Host "Checking pip..." -ForegroundColor Blue
+    try {
         $pipVersion = & $pythonCmd -m pip --version 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
         } else {
-            Write-Host "✗ Could not install pip. Please install pip manually." -ForegroundColor Red
-            exit 1
+            Write-Host "⚠ pip not found. Attempting to install..." -ForegroundColor Yellow
+            # Try ensurepip, but handle externally-managed-environment gracefully
+            $ensurepipResult = & $pythonCmd -m ensurepip --upgrade 2>&1
+            if ($LASTEXITCODE -ne 0 -and $ensurepipResult -match "externally-managed-environment") {
+                Write-Host "✗ System Python is externally managed. Please use venv method instead:" -ForegroundColor Red
+                Write-Host "  `$env:BLACKSMITH_INSTALL_METHOD='venv'; irm https://raw.githubusercontent.com/jimididit/blacksmith/main/install.ps1 | iex" -ForegroundColor Yellow
+                exit 1
+            }
+            $pipVersion = & $pythonCmd -m pip --version 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
+            } else {
+                Write-Host "✗ Could not install pip. Please install pip manually or use venv method." -ForegroundColor Red
+                exit 1
+            }
+        }
+    } catch {
+        Write-Host "✗ Error checking pip: $_" -ForegroundColor Red
+        if ($_ -match "externally-managed-environment") {
+            Write-Host "System Python is externally managed. Please use venv method instead:" -ForegroundColor Yellow
+            Write-Host "  `$env:BLACKSMITH_INSTALL_METHOD='venv'; irm https://raw.githubusercontent.com/jimididit/blacksmith/main/install.ps1 | iex" -ForegroundColor Yellow
+        } else {
+            Write-Host "Attempting to install pip..." -ForegroundColor Yellow
+            & $pythonCmd -m ensurepip --upgrade 2>&1 | Out-Null
+            $pipVersion = & $pythonCmd -m pip --version 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
+            } else {
+                Write-Host "✗ Could not install pip. Please install pip manually or use venv method." -ForegroundColor Red
+                exit 1
+            }
         }
     }
-} catch {
-    Write-Host "✗ Error checking pip: $_" -ForegroundColor Red
-    Write-Host "Attempting to install pip..." -ForegroundColor Yellow
-    & $pythonCmd -m ensurepip --upgrade 2>&1 | Out-Null
-    $pipVersion = & $pythonCmd -m pip --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Found pip: $pipVersion" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Could not install pip. Please install pip manually." -ForegroundColor Red
-        exit 1
-    }
+} else {
+    Write-Host "Using virtual environment method - pip check skipped (venv includes pip)" -ForegroundColor Blue
 }
 
 # Create temporary directory
@@ -209,11 +230,7 @@ try {
         throw "Installation directory not found"
     }
 
-    # Determine install method
-    $installMethod = $env:BLACKSMITH_INSTALL_METHOD
-    if (-not $installMethod) {
-        $installMethod = "venv"  # Default to venv install for better isolation
-    }
+    # Install method already determined earlier (before pip check)
 
     Write-Host ""
     Write-Host "Installing Blacksmith (method: $installMethod)..." -ForegroundColor Blue

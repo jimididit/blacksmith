@@ -16,8 +16,8 @@ NC='\033[0m' # No Color
 
 # Default values
 REPO_URL="${BLACKSMITH_REPO:-https://github.com/jimididit/blacksmith.git}"
-INSTALL_METHOD="${BLACKSMITH_INSTALL_METHOD:-venv}"  # venv (default), global, or user
 BRANCH="${BLACKSMITH_BRANCH:-main}"
+# Note: INSTALL_METHOD is determined earlier (before pip check)
 
 echo -e "${BLUE}🔨 Blacksmith Installation Script${NC}"
 echo ""
@@ -109,19 +109,40 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1
     exit 1
 fi
 
-# Check for pip (use python -m pip to avoid launcher issues)
-echo -e "${BLUE}Checking pip...${NC}"
-if ${PYTHON_CMD} -m pip --version &> /dev/null; then
-    PIP_VERSION=$(${PYTHON_CMD} -m pip --version 2>&1)
-    echo -e "${GREEN}✓${NC} Found pip: ${PIP_VERSION}"
+# Determine install method early (before pip check)
+INSTALL_METHOD="${BLACKSMITH_INSTALL_METHOD:-venv}"  # venv (default), global, or user
+
+# Check for pip only if not using venv (venv includes pip automatically)
+if [ "${INSTALL_METHOD}" != "venv" ]; then
+    echo -e "${BLUE}Checking pip...${NC}"
+    if ${PYTHON_CMD} -m pip --version &> /dev/null; then
+        PIP_VERSION=$(${PYTHON_CMD} -m pip --version 2>&1)
+        echo -e "${GREEN}✓${NC} Found pip: ${PIP_VERSION}"
+    else
+        echo -e "${YELLOW}⚠${NC} pip not found. Attempting to install..."
+        ENSUREPIP_OUTPUT=$(${PYTHON_CMD} -m ensurepip --upgrade 2>&1)
+        ENSUREPIP_EXIT=$?
+        
+        if echo "$ENSUREPIP_OUTPUT" | grep -q "externally-managed-environment"; then
+            echo -e "${RED}✗ System Python is externally managed. Please use venv method instead:${NC}"
+            echo -e "${YELLOW}  BLACKSMITH_INSTALL_METHOD=venv curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/install.sh | bash${NC}"
+            exit 1
+        elif [ $ENSUREPIP_EXIT -eq 0 ]; then
+            # Check if ensurepip succeeded
+            if ${PYTHON_CMD} -m pip --version &> /dev/null; then
+                PIP_VERSION=$(${PYTHON_CMD} -m pip --version 2>&1)
+                echo -e "${GREEN}✓${NC} Found pip: ${PIP_VERSION}"
+            else
+                echo -e "${RED}✗ Could not install pip. Please install pip manually or use venv method.${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${RED}✗ Could not install pip. Please install pip manually or use venv method.${NC}"
+            exit 1
+        fi
+    fi
 else
-    echo -e "${YELLOW}⚠${NC} pip not found. Attempting to install..."
-    ${PYTHON_CMD} -m ensurepip --upgrade || {
-        echo -e "${RED}✗ Could not install pip. Please install pip manually.${NC}"
-        exit 1
-    }
-    PIP_VERSION=$(${PYTHON_CMD} -m pip --version 2>&1)
-    echo -e "${GREEN}✓${NC} Found pip: ${PIP_VERSION}"
+    echo -e "${BLUE}Using virtual environment method - pip check skipped (venv includes pip)${NC}"
 fi
 
 # Create temporary directory
