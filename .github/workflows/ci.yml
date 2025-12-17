@@ -261,7 +261,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          pip install --upgrade twine packaging
+          pip install --upgrade twine packaging > /dev/null 2>&1
           # Verify package metadata before upload
           twine check dist/*
           # Upload to PyPI (skip if file already exists)
@@ -282,11 +282,13 @@ jobs:
           
           if [ -f "$NOTES_FILE" ]; then
             echo "Found release notes file: $NOTES_FILE"
-            # Read file and use heredoc to preserve formatting
+            # Read file content into a variable first to avoid output mixing
+            NOTES_CONTENT=$(cat "$NOTES_FILE")
+            # Use heredoc to preserve formatting and avoid output capture issues
             {
-              echo 'notes<<EOF'
-              cat "$NOTES_FILE"
-              echo 'EOF'
+              echo 'notes<<RELEASE_NOTES_EOF'
+              printf '%s\n' "$NOTES_CONTENT"
+              echo 'RELEASE_NOTES_EOF'
             } >> $GITHUB_OUTPUT
             echo "use_custom=true" >> $GITHUB_OUTPUT
           else
@@ -313,13 +315,18 @@ jobs:
         id: final_body
         run: |
           if [ "${{ steps.release_notes.outputs.use_custom }}" == "true" ]; then
-            echo "body<<EOF" >> $GITHUB_OUTPUT
-            echo "${{ steps.release_notes.outputs.notes }}" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            # Use heredoc to properly handle multiline content
+            {
+              echo 'body<<RELEASE_NOTES_EOF'
+              echo "${{ steps.release_notes.outputs.notes }}"
+              echo 'RELEASE_NOTES_EOF'
+            } >> $GITHUB_OUTPUT
           else
-            echo "body<<EOF" >> $GITHUB_OUTPUT
-            echo "${{ steps.generate_notes.outputs.body }}" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            {
+              echo 'body<<RELEASE_NOTES_EOF'
+              echo "${{ steps.generate_notes.outputs.body }}"
+              echo 'RELEASE_NOTES_EOF'
+            } >> $GITHUB_OUTPUT
           fi
       
       - name: Create GitHub Release
