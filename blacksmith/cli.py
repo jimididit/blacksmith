@@ -1472,15 +1472,25 @@ rm -f "$SCRIPT_PATH"
     # Try different uninstall methods
     print_info("Attempting to uninstall Blacksmith...")
     
-    # Remove virtual environment if it exists
+    # Remove virtual environment if it exists (with confirmation)
     if venv_exists:
-        try:
-            print_info(f"Removing virtual environment: {venv_path}")
-            shutil.rmtree(venv_path)
-            print_success("Virtual environment removed successfully.")
-        except Exception as e:
-            print_warning(f"Could not remove virtual environment: {e}")
-            print_info(f"You may need to manually delete: {venv_path}")
+        remove_venv = True
+        if not yes:
+            remove_venv = questionary.confirm(
+                f"Remove virtual environment at {venv_path}?",
+                default=True
+            ).ask()
+        
+        if remove_venv:
+            try:
+                print_info(f"Removing virtual environment: {venv_path}")
+                shutil.rmtree(venv_path)
+                print_success("Virtual environment removed successfully.")
+            except Exception as e:
+                print_warning(f"Could not remove virtual environment: {e}")
+                print_info(f"You may need to manually delete: {venv_path}")
+        else:
+            print_info("Virtual environment left intact.")
     
     # Detect which Python executable is running Blacksmith
     python_exe = sys.executable
