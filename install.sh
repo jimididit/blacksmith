@@ -22,9 +22,35 @@ BRANCH="${BLACKSMITH_BRANCH:-main}"
 echo -e "${BLUE}🔨 Blacksmith Installation Script${NC}"
 echo ""
 
+# Check if we're already in a virtual environment
+IN_VENV=false
+SYSTEM_PYTHON=""
+if [ -n "${VIRTUAL_ENV}" ]; then
+    IN_VENV=true
+    CURRENT_PYTHON=$(command -v python 2>/dev/null || command -v python3 2>/dev/null)
+    # Get system Python from current Python's base_prefix
+    BASE_PREFIX=$(${CURRENT_PYTHON} -c "import sys; print(sys.base_prefix)" 2>/dev/null)
+    if [ -n "${BASE_PREFIX}" ] && [ -f "${BASE_PREFIX}/bin/python3" ]; then
+        SYSTEM_PYTHON="${BASE_PREFIX}/bin/python3"
+    elif [ -n "${BASE_PREFIX}" ] && [ -f "${BASE_PREFIX}/bin/python" ]; then
+        SYSTEM_PYTHON="${BASE_PREFIX}/bin/python"
+    fi
+    
+    echo -e "${YELLOW}⚠${NC} Detected that you're already in a virtual environment"
+    echo "  Current venv: ${VIRTUAL_ENV}"
+    echo "  Current Python: ${CURRENT_PYTHON}"
+    if [ -n "${SYSTEM_PYTHON}" ]; then
+        echo "  Will use system Python to create Blacksmith's venv: ${SYSTEM_PYTHON}"
+    fi
+fi
+
 # Check for Python
 PYTHON_CMD=""
-if command -v python3 &> /dev/null; then
+if [ -n "${SYSTEM_PYTHON}" ] && [ -f "${SYSTEM_PYTHON}" ]; then
+    # Use system Python if we detected we're in a venv
+    PYTHON_CMD="${SYSTEM_PYTHON}"
+    echo -e "${BLUE}Using system Python: ${SYSTEM_PYTHON}${NC}"
+elif command -v python3 &> /dev/null; then
     PYTHON_CMD="python3"
 elif command -v python &> /dev/null; then
     PYTHON_CMD="python"
@@ -242,16 +268,83 @@ case "${INSTALL_METHOD}" in
         fi
         
         # Create venv
+        echo "Creating virtual environment at ${VENV_PATH}..."
+        if [ "${IN_VENV}" = true ]; then
+            echo "  (Using system Python to avoid nested venv issues)"
+        fi
         ${PYTHON_CMD} -m venv "${VENV_PATH}"
         if [ $? -ne 0 ]; then
             echo -e "${RED}✗${NC} Failed to create virtual environment"
             exit 1
         fi
         
-        # Activate venv and install
+        # Wait a moment for venv to be fully created
+        sleep 1
+        
+        # Verify venv was created correctly
+        VENV_PYTHON="${VENV_PATH}/bin/python"
+        VENV_PIP="${VENV_PATH}/bin/pip"
+        
+        if [ ! -f "${VENV_PYTHON}" ]; then
+            echo -e "${RED}✗${NC} Virtual environment Python executable not found at ${VENV_PYTHON}"
+            exit 1
+        fi
+        
+        if [ ! -f "${VENV_PIP}" ]; then
+            echo -e "${RED}✗${NC} Virtual environment pip not found at ${VENV_PIP}"
+            exit 1
+        fi
+        
+        # Verify we're using the venv's Python
+        VENV_PYTHON_VERSION=$(${VENV_PYTHON} --version 2>&1)
+        echo -e "${GREEN}✓${NC} Virtual environment created successfully"
+        echo "  Using Python: ${VENV_PYTHON_VERSION}"
+        
+        # Activate venv
         source "${VENV_PATH}/bin/activate"
-        python -m pip install --upgrade pip
-        python -m pip install -e "${INSTALL_DIR}"
+        
+        # Verify we're actually in the venv
+        if [ -z "${VIRTUAL_ENV}" ]; then
+            echo -e "${RED}✗${NC} Failed to activate virtual environment"
+            exit 1
+        fi
+        
+        if [ "${VIRTUAL_ENV}" != "${VENV_PATH}" ]; then
+            echo -e "${YELLOW}⚠${NC} Warning: VIRTUAL_ENV (${VIRTUAL_ENV}) doesn't match expected path (${VENV_PATH})"
+        fi
+        
+        # Verify we're using venv's Python
+        CURRENT_PYTHON=$(which python)
+        if [ "${CURRENT_PYTHON}" != "${VENV_PYTHON}" ]; then
+            echo -e "${YELLOW}⚠${NC} Warning: 'python' command (${CURRENT_PYTHON}) doesn't match venv Python (${VENV_PYTHON})"
+            echo "  Using venv Python directly..."
+            ${VENV_PYTHON} -m pip install --upgrade pip --quiet
+            ${VENV_PYTHON} -m pip install -e "${INSTALL_DIR}"
+        else
+            # Install using activated venv
+            echo "Upgrading pip in virtual environment..."
+            python -m pip install --upgrade pip --quiet
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}✗${NC} Failed to upgrade pip in virtual environment"
+                exit 1
+            fi
+            
+            echo "Installing Blacksmith in virtual environment..."
+            python -m pip install -e "${INSTALL_DIR}"
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}✗${NC} Failed to install Blacksmith in virtual environment"
+                exit 1
+            fi
+        fi
+        
+        # Verify installation by checking if blacksmith module can be imported
+        echo "Verifying installation..."
+        VERIFY_RESULT=$(${VENV_PYTHON} -c "import blacksmith; print('INSTALL_OK')" 2>&1)
+        if [ "${VERIFY_RESULT}" != "INSTALL_OK" ]; then
+            echo -e "${YELLOW}⚠${NC} Warning: Could not verify Blacksmith installation: ${VERIFY_RESULT}"
+        else
+            echo -e "${GREEN}✓${NC} Installation verified successfully"
+        fi
         
         echo -e "${GREEN}✓${NC} Blacksmith installed in virtual environment"
         echo ""

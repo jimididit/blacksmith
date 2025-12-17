@@ -6,12 +6,92 @@ $ErrorActionPreference = "Stop"
 Write-Host "🔨 Blacksmith Installation Script" -ForegroundColor Blue
 Write-Host ""
 
+# Check if we're already in a virtual environment
+$inVenv = $false
+$systemPython = $null
+
+# First, try to find any Python command
+$tempPythonCmd = $null
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    $tempPythonCmd = "python"
+} elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+    $tempPythonCmd = "python3"
+}
+
+if ($tempPythonCmd) {
+    try {
+        # Check if current Python is in a venv and get system Python path
+        $venvCheckScript = @"
+import sys
+import os
+
+in_venv = False
+if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
+    in_venv = True
+elif hasattr(sys, 'real_prefix'):
+    in_venv = True
+
+if in_venv:
+    print('IN_VENV')
+    print(sys.executable)
+    base_prefix = sys.base_prefix if hasattr(sys, 'base_prefix') else sys.prefix
+    print(base_prefix)
+    # Try to find system Python
+    if os.name == 'nt':  # Windows
+        system_python = os.path.join(base_prefix, 'python.exe')
+        if os.path.exists(system_python):
+            print(system_python)
+        else:
+            system_python = os.path.join(base_prefix, 'Scripts', 'python.exe')
+            if os.path.exists(system_python):
+                print(system_python)
+            else:
+                print('NOT_FOUND')
+    else:  # Unix
+        system_python = os.path.join(base_prefix, 'bin', 'python3')
+        if os.path.exists(system_python):
+            print(system_python)
+        else:
+            system_python = os.path.join(base_prefix, 'bin', 'python')
+            if os.path.exists(system_python):
+                print(system_python)
+            else:
+                print('NOT_FOUND')
+else:
+    print('NOT_IN_VENV')
+"@
+        $venvCheck = & $tempPythonCmd -c $venvCheckScript 2>&1
+        if ($venvCheck -match "IN_VENV") {
+            $inVenv = $true
+            $lines = $venvCheck -split "`n" | Where-Object { $_.Trim() -ne "" }
+            if ($lines.Count -ge 4) {
+                $currentPython = $lines[1].Trim()
+                $basePrefix = $lines[2].Trim()
+                $foundSystemPython = $lines[3].Trim()
+                if ($foundSystemPython -ne "NOT_FOUND" -and (Test-Path $foundSystemPython)) {
+                    $systemPython = $foundSystemPython
+                }
+                Write-Host "⚠ Detected that you're already in a virtual environment" -ForegroundColor Yellow
+                Write-Host "  Current venv Python: $currentPython" -ForegroundColor Gray
+                if ($systemPython) {
+                    Write-Host "  Will use system Python to create Blacksmith's venv: $systemPython" -ForegroundColor Gray
+                } else {
+                    Write-Host "  Warning: Could not locate system Python, will try to use base Python" -ForegroundColor Yellow
+                }
+            }
+        }
+    } catch {
+        # Python check might fail, continue with normal detection
+    }
+}
+
 # Check for Python
 $pythonCmd = $null
-if (Get-Command python -ErrorAction SilentlyContinue) {
-    $pythonCmd = "python"
-} elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-    $pythonCmd = "python3"
+if ($systemPython -and (Test-Path $systemPython)) {
+    # Use system Python if we detected we're in a venv
+    $pythonCmd = $systemPython
+} elseif ($tempPythonCmd) {
+    $pythonCmd = $tempPythonCmd
 }
 
 if (-not $pythonCmd) {
@@ -248,18 +328,69 @@ try {
             }
             
             # Create venv
+            Write-Host "Creating virtual environment at $venvPath..." -ForegroundColor Blue
+            if ($inVenv) {
+                Write-Host "  (Using system Python to avoid nested venv issues)" -ForegroundColor Gray
+            }
             & $pythonCmd -m venv $venvPath
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "✗ Failed to create virtual environment" -ForegroundColor Red
                 exit 1
             }
             
-            # Activate venv and install
+            # Wait a moment for venv to be fully created
+            Start-Sleep -Seconds 1
+            
+            # Verify venv was created correctly
             $venvPython = Join-Path $venvPath "Scripts\python.exe"
             $venvPip = Join-Path $venvPath "Scripts\pip.exe"
             
-            & $venvPython -m pip install --upgrade pip
+            if (-not (Test-Path $venvPython)) {
+                Write-Host "✗ Virtual environment Python executable not found at $venvPython" -ForegroundColor Red
+                exit 1
+            }
+            
+            if (-not (Test-Path $venvPip)) {
+                Write-Host "✗ Virtual environment pip not found at $venvPip" -ForegroundColor Red
+                exit 1
+            }
+            
+            # Verify we're using the venv's Python
+            $venvPythonVersion = & $venvPython --version 2>&1
+            Write-Host "✓ Virtual environment created successfully" -ForegroundColor Green
+            Write-Host "  Using Python: $venvPythonVersion" -ForegroundColor Gray
+            
+            # Verify venv is working by checking if it's actually a venv
+            $venvCheck = & $venvPython -c "import sys; result = 'VENV_OK' if (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix) or hasattr(sys, 'real_prefix') else 'VENV_FAIL'; print(result)" 2>&1
+            if ($venvCheck -ne "VENV_OK") {
+                Write-Host "⚠ Warning: Virtual environment verification check failed - continuing anyway" -ForegroundColor Yellow
+            } else {
+                Write-Host "✓ Virtual environment verified" -ForegroundColor Green
+            }
+            
+            # Install using venv's Python/pip
+            Write-Host "Upgrading pip in virtual environment..." -ForegroundColor Blue
+            & $venvPython -m pip install --upgrade pip --quiet
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "✗ Failed to upgrade pip in virtual environment" -ForegroundColor Red
+                exit 1
+            }
+            
+            Write-Host "Installing Blacksmith in virtual environment..." -ForegroundColor Blue
             & $venvPython -m pip install -e $installDir
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "✗ Failed to install Blacksmith in virtual environment" -ForegroundColor Red
+                exit 1
+            }
+            
+            # Verify installation by checking if blacksmith module can be imported
+            Write-Host "Verifying installation..." -ForegroundColor Blue
+            $verifyResult = & $venvPython -c "import blacksmith; print('INSTALL_OK')" 2>&1
+            if ($verifyResult -ne "INSTALL_OK") {
+                Write-Host "⚠ Warning: Could not verify Blacksmith installation: $verifyResult" -ForegroundColor Yellow
+            } else {
+                Write-Host "✓ Installation verified successfully" -ForegroundColor Green
+            }
             
             Write-Host "✓ Blacksmith installed in virtual environment" -ForegroundColor Green
             Write-Host ""
