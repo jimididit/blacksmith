@@ -32,25 +32,58 @@
 
 ## 🚀 Quick Start
 
-### Linux - One-Line Install
+### Recommended: Install in a Virtual Environment
+
+We recommend installing Blacksmith in a virtual environment to avoid PATH issues and ensure proper isolation.
+
+**1. Create a virtual environment:**
+
+**Linux/macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/install.sh | bash
+python3 -m venv ~/.blacksmith-venv
+source ~/.blacksmith-venv/bin/activate
 ```
 
-This creates an isolated virtual environment at `~/.blacksmith-venv` - the recommended method for better isolation and avoiding PATH issues.
-
-### Windows
+**Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/jimididit/blacksmith/main/install.ps1 | iex
+python -m venv $env:USERPROFILE\.blacksmith-venv
+$env:USERPROFILE\.blacksmith-venv\Scripts\Activate.ps1
 ```
 
-This creates an isolated virtual environment at `%USERPROFILE%\.blacksmith-venv` - the recommended method for better isolation and avoiding PATH issues.
+**Windows (CMD):**
 
-**After Installation (Virtual Environment Method):**
+```cmd
+python -m venv %USERPROFILE%\.blacksmith-venv
+%USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
+```
 
-To use Blacksmith, activate the virtual environment:
+**2. Install Blacksmith:**
+
+**Option A: Install from PyPI (recommended)**
+
+```bash
+pip install jdi-blacksmith
+```
+
+**Option B: Install from source**
+
+```bash
+git clone https://github.com/jimididit/blacksmith.git
+cd blacksmith
+pip install -e .
+```
+
+**3. Verify installation:**
+
+```bash
+blacksmith --version
+```
+
+**4. Using Blacksmith:**
+
+After installation, make sure your virtual environment is activated. To activate it again later:
 
 **Linux/macOS:**
 
@@ -61,7 +94,7 @@ source ~/.blacksmith-venv/bin/activate
 **Windows (PowerShell):**
 
 ```powershell
-~\.blacksmith-venv\Scripts\Activate.ps1
+$env:USERPROFILE\.blacksmith-venv\Scripts\Activate.ps1
 ```
 
 **Windows (CMD):**
@@ -70,43 +103,35 @@ source ~/.blacksmith-venv/bin/activate
 %USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
 ```
 
-**Optional:** Create an alias or add to your shell profile for automatic activation:
+**Optional:** Create an alias for easier access:
 
 **Linux/macOS (~/.bashrc or ~/.zshrc):**
 
 ```bash
 alias blacksmith="$HOME/.blacksmith-venv/bin/blacksmith"
-# Or auto-activate:
-export BLACKSMITH_VENV="$HOME/.blacksmith-venv"
-[ -f "${BLACKSMITH_VENV}/bin/activate" ] && source "${BLACKSMITH_VENV}/bin/activate"
 ```
 
 **Windows (PowerShell Profile):**
 
 ```powershell
 Set-Alias blacksmith "$env:USERPROFILE\.blacksmith-venv\Scripts\blacksmith.exe"
-# Or auto-activate:
-$env:BLACKSMITH_VENV = "$env:USERPROFILE\.blacksmith-venv"
-if (Test-Path "$env:BLACKSMITH_VENV\Scripts\Activate.ps1") { & "$env:BLACKSMITH_VENV\Scripts\Activate.ps1" }
 ```
 
-### Alternative Installation Methods
+### Alternative: Install Without Virtual Environment
 
-**Install from PyPI:**
+If you prefer not to use a virtual environment, you can install directly:
 
 ```bash
+# From PyPI
 pip install jdi-blacksmith
-```
 
-**Manual Installation (from source):**
-
-```bash
+# Or from source
 git clone https://github.com/jimididit/blacksmith.git
 cd blacksmith
 pip install -e .
 ```
 
-> 💡 **Note:** For best results, we recommend using the one-liner installation scripts which automatically create a virtual environment. This avoids PATH issues and provides better isolation.
+> ⚠️ **Note:** Installing without a virtual environment may cause PATH issues. If `blacksmith` is not recognized after installation, you may need to add Python's Scripts/bin directory to your PATH. See the [Troubleshooting Installation](#-troubleshooting-installation) section below.
 
 > 💡 **Having installation issues?** See the [Troubleshooting Installation](#-troubleshooting-installation) section below.
 
@@ -468,8 +493,6 @@ blacksmith/
 ├── tests/                  # Test suite
 ├── scripts/                # Helper scripts
 │   └── bump_version.py     # Version bumping script
-├── install.sh              # Installation script
-├── install.ps1             # Windows installation script
 └── README.md
 ```
 
@@ -659,19 +682,21 @@ python -m site --user-base
 # Then restart your terminal
 ```
 
-**Alternative: Use a Virtual Environment (Recommended)**
+**Use a Virtual Environment (Recommended)**
 
-If you continue to have PATH issues, using a virtual environment is the most reliable option:
+Using a virtual environment is the most reliable option and avoids PATH issues:
 
 ```bash
 # Create and activate a virtual environment
-python -m venv blacksmith-env
+python3 -m venv ~/.blacksmith-venv
 
 # Activate it:
 # Linux/macOS:
-source blacksmith-env/bin/activate
-# Windows:
-blacksmith-env\Scripts\activate
+source ~/.blacksmith-venv/bin/activate
+# Windows (PowerShell):
+$env:USERPROFILE\.blacksmith-venv\Scripts\Activate.ps1
+# Windows (CMD):
+%USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
 
 # Install blacksmith
 pip install jdi-blacksmith
