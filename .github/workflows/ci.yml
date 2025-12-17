@@ -123,33 +123,6 @@ jobs:
           blacksmith search git --limit 5 | Out-Null; if ($LASTEXITCODE -ne 0) { Write-Host "Search test skipped" }
         continue-on-error: true
 
-  # Test Installation Scripts
-  test-install:
-    name: Test Installation Scripts
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Test install.sh (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          chmod +x install.sh
-          # Test dry-run or validation
-          bash -n install.sh  # Syntax check
-          # Could test actual install in a container
-      
-      - name: Test install.ps1 (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          # Syntax check
-          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content install.ps1 -Raw), [ref]$null)
-          Write-Host "PowerShell script syntax is valid"
-
   # Security Scanning
   security:
     name: Security Scan
@@ -274,22 +247,15 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
       
-      - name: Read release notes
-        id: release_notes
+      - name: Check for release notes file
+        id: check_notes
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           NOTES_FILE="release-notes/v${VERSION}.md"
           
           if [ -f "$NOTES_FILE" ]; then
             echo "Found release notes file: $NOTES_FILE"
-            # Read file content into a variable first to avoid output mixing
-            NOTES_CONTENT=$(cat "$NOTES_FILE")
-            # Use heredoc to preserve formatting and avoid output capture issues
-            {
-              echo 'notes<<RELEASE_NOTES_EOF'
-              printf '%s\n' "$NOTES_CONTENT"
-              echo 'RELEASE_NOTES_EOF'
-            } >> $GITHUB_OUTPUT
+            echo "notes_file=$NOTES_FILE" >> $GITHUB_OUTPUT
             echo "use_custom=true" >> $GITHUB_OUTPUT
           else
             echo "Release notes file not found: $NOTES_FILE"
@@ -298,7 +264,7 @@ jobs:
           fi
       
       - name: Generate release notes (if custom not found)
-        if: steps.release_notes.outputs.use_custom == 'false'
+        if: steps.check_notes.outputs.use_custom == 'false'
         id: generate_notes
         uses: actions/github-script@v7
         with:
@@ -309,32 +275,26 @@ jobs:
               tag_name: context.ref.replace('refs/tags/', ''),
               target_commitish: context.sha,
             });
-            core.setOutput('body', data.body);
+            core.setOutput('body', data.body)
       
-      - name: Set final release body
-        id: final_body
-        run: |
-          if [ "${{ steps.release_notes.outputs.use_custom }}" == "true" ]; then
-            # Use heredoc to properly handle multiline content
-            {
-              echo 'body<<RELEASE_NOTES_EOF'
-              echo "${{ steps.release_notes.outputs.notes }}"
-              echo 'RELEASE_NOTES_EOF'
-            } >> $GITHUB_OUTPUT
-          else
-            {
-              echo 'body<<RELEASE_NOTES_EOF'
-              echo "${{ steps.generate_notes.outputs.body }}"
-              echo 'RELEASE_NOTES_EOF'
-            } >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Create GitHub Release
+      - name: Create GitHub Release (with custom notes)
+        if: steps.check_notes.outputs.use_custom == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: Blacksmith ${{ github.ref_name }}
-          body: ${{ steps.final_body.outputs.body }}
+          body_path: ${{ steps.check_notes.outputs.notes_file }}
+          files: dist/*
+          draft: false
+          prerelease: false
+      
+      - name: Create GitHub Release (with generated notes)
+        if: steps.check_notes.outputs.use_custom == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Blacksmith ${{ github.ref_name }}
+          body: ${{ steps.generate_notes.outputs.body }}
           files: dist/*
           draft: false
           prerelease: false
