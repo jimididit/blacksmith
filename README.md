@@ -29,61 +29,84 @@
 
 - Python 3.8 or higher
 - One or more supported package managers installed on your system
-- Administrator/sudo privileges (for system-wide installations)
 
 ## 🚀 Quick Start
 
 ### Linux - One-Line Install
 
 ```bash
-# User installation (recommended, no sudo required)
 curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/install.sh | bash
-
-# Global installation (requires sudo)
-curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/install.sh | sudo bash
 ```
+
+This creates an isolated virtual environment at `~/.blacksmith-venv` - the recommended method for better isolation and avoiding PATH issues.
 
 ### Windows
 
 ```powershell
-# PowerShell one-liner
 irm https://raw.githubusercontent.com/jimididit/blacksmith/main/install.ps1 | iex
 ```
 
-### Install from PyPI
+This creates an isolated virtual environment at `%USERPROFILE%\.blacksmith-venv` - the recommended method for better isolation and avoiding PATH issues.
+
+**After Installation (Virtual Environment Method):**
+
+To use Blacksmith, activate the virtual environment:
+
+**Linux/macOS:**
 
 ```bash
-# Global installation
-pip install jdi-blacksmith
-
-# Or for current user only (no admin required)
-pip install --user jdi-blacksmith
+source ~/.blacksmith-venv/bin/activate
 ```
 
-### Manual Installation (from source)
+**Windows (PowerShell):**
 
-1. Clone the repository:
+```powershell
+~\.blacksmith-venv\Scripts\Activate.ps1
+```
+
+**Windows (CMD):**
+
+```cmd
+%USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
+```
+
+**Optional:** Create an alias or add to your shell profile for automatic activation:
+
+**Linux/macOS (~/.bashrc or ~/.zshrc):**
+
+```bash
+alias blacksmith="$HOME/.blacksmith-venv/bin/blacksmith"
+# Or auto-activate:
+export BLACKSMITH_VENV="$HOME/.blacksmith-venv"
+[ -f "${BLACKSMITH_VENV}/bin/activate" ] && source "${BLACKSMITH_VENV}/bin/activate"
+```
+
+**Windows (PowerShell Profile):**
+
+```powershell
+Set-Alias blacksmith "$env:USERPROFILE\.blacksmith-venv\Scripts\blacksmith.exe"
+# Or auto-activate:
+$env:BLACKSMITH_VENV = "$env:USERPROFILE\.blacksmith-venv"
+if (Test-Path "$env:BLACKSMITH_VENV\Scripts\Activate.ps1") { & "$env:BLACKSMITH_VENV\Scripts\Activate.ps1" }
+```
+
+### Alternative Installation Methods
+
+**Install from PyPI:**
+
+```bash
+pip install jdi-blacksmith
+```
+
+**Manual Installation (from source):**
 
 ```bash
 git clone https://github.com/jimididit/blacksmith.git
 cd blacksmith
-```
-
-1. Install using pip:
-
-```bash
-# Global installation (recommended)
 pip install -e .
-
-# Or for current user only (no admin required)
-pip install --user -e .
 ```
 
-1. Verify installation:
-
-```bash
-blacksmith --version
-```
+> 💡 **Note:** For best results, we recommend using the one-liner installation scripts which automatically create a virtual environment. This avoids PATH issues and provides better isolation.
 
 > 💡 **Having installation issues?** See the [Troubleshooting Installation](#-troubleshooting-installation) section below.
 
@@ -270,16 +293,18 @@ blacksmith install development --force
 ### Uninstall Blacksmith
 
 ```bash
-# Using the CLI
+# Using the CLI (removes package and virtual environment)
 blacksmith uninstall
 
-# Or using the uninstall script
-# Linux:
-curl -fsSL https://raw.githubusercontent.com/jimididit/blacksmith/main/uninstall.sh | bash
-
-# Windows:
-irm https://raw.githubusercontent.com/jimididit/blacksmith/main/uninstall.ps1 | iex
+# Skip confirmation prompt
+blacksmith uninstall --yes
 ```
+
+The uninstall command will:
+
+- Remove Blacksmith from your Python environment
+- Remove the virtual environment (if installed via `venv` method)
+- Clean up the `blacksmith` command executable
 
 ## 📝 Configuration Format
 
@@ -444,7 +469,7 @@ blacksmith/
 ├── scripts/                # Helper scripts
 │   └── bump_version.py     # Version bumping script
 ├── install.sh              # Installation script
-├── uninstall.sh            # Uninstallation script
+├── install.ps1             # Windows installation script
 └── README.md
 ```
 

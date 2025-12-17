@@ -163,17 +163,17 @@ try {
             $branch = "main"
         }
         
-        $gitOutput = & git clone --depth 1 --branch $branch $repoUrl "$tempDir\blacksmith" 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "⚠ Git clone failed: $gitOutput" -ForegroundColor Yellow
-            Write-Host "Falling back to direct download..." -ForegroundColor Yellow
-            # Fall through to direct download method
-        } else {
+        # Suppress git progress output (it goes to stderr and confuses PowerShell)
+        $null = & git clone --depth 1 --branch $branch --quiet $repoUrl "$tempDir\blacksmith" 2>&1
+        if ($LASTEXITCODE -eq 0) {
             $installDir = Join-Path $tempDir "blacksmith"
             if (Test-Path $installDir) {
                 Write-Host "✓ Downloaded Blacksmith" -ForegroundColor Green
                 $gitSuccess = $true
             }
+        } else {
+            Write-Host "⚠ Git clone failed, falling back to direct download..." -ForegroundColor Yellow
+            # Fall through to direct download method
         }
     }
     
@@ -212,13 +212,50 @@ try {
     # Determine install method
     $installMethod = $env:BLACKSMITH_INSTALL_METHOD
     if (-not $installMethod) {
-        $installMethod = "user"  # Default to user install on Windows
+        $installMethod = "venv"  # Default to venv install for better isolation
     }
 
     Write-Host ""
     Write-Host "Installing Blacksmith (method: $installMethod)..." -ForegroundColor Blue
 
     switch ($installMethod) {
+        "venv" {
+            Write-Host "Creating virtual environment..."
+            $venvPath = Join-Path $env:USERPROFILE ".blacksmith-venv"
+            
+            # Check if venv already exists
+            if (Test-Path $venvPath) {
+                Write-Host "Virtual environment already exists at $venvPath" -ForegroundColor Yellow
+                Write-Host "Removing old virtual environment..." -ForegroundColor Yellow
+                Remove-Item -Path $venvPath -Recurse -Force
+            }
+            
+            # Create venv
+            & $pythonCmd -m venv $venvPath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "✗ Failed to create virtual environment" -ForegroundColor Red
+                exit 1
+            }
+            
+            # Activate venv and install
+            $venvPython = Join-Path $venvPath "Scripts\python.exe"
+            $venvPip = Join-Path $venvPath "Scripts\pip.exe"
+            
+            & $venvPython -m pip install --upgrade pip
+            & $venvPython -m pip install -e $installDir
+            
+            Write-Host "✓ Blacksmith installed in virtual environment" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "To use Blacksmith, activate the virtual environment:" -ForegroundColor Yellow
+            Write-Host "  $venvPath\Scripts\Activate.ps1" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Or create an alias in your PowerShell profile:" -ForegroundColor Yellow
+            Write-Host "  Set-Alias blacksmith `"$venvPath\Scripts\blacksmith.exe`"" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "To activate automatically, add this to your PowerShell profile:" -ForegroundColor Yellow
+            Write-Host "  `$env:BLACKSMITH_VENV = `"$venvPath`"" -ForegroundColor Cyan
+            Write-Host "  if (Test-Path `"`$env:BLACKSMITH_VENV\Scripts\Activate.ps1`") { & `"`$env:BLACKSMITH_VENV\Scripts\Activate.ps1`" }" -ForegroundColor Cyan
+        }
         "user" {
             Write-Host "Installing for current user..."
             & $pythonCmd -m pip install --upgrade pip
@@ -233,7 +270,7 @@ try {
         }
         default {
             Write-Host "✗ Unknown install method: $installMethod" -ForegroundColor Red
-            Write-Host "Valid methods: global, user"
+            Write-Host "Valid methods: venv, global, user"
             exit 1
         }
     }

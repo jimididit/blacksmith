@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 
 # Default values
 REPO_URL="${BLACKSMITH_REPO:-https://github.com/jimididit/blacksmith.git}"
-INSTALL_METHOD="${BLACKSMITH_INSTALL_METHOD:-user}"  # global, venv, or user (default to user for safety)
+INSTALL_METHOD="${BLACKSMITH_INSTALL_METHOD:-venv}"  # venv (default), global, or user
 BRANCH="${BLACKSMITH_BRANCH:-main}"
 
 echo -e "${BLUE}🔨 Blacksmith Installation Script${NC}"
@@ -135,7 +135,8 @@ echo -e "${BLUE}Downloading Blacksmith...${NC}"
 GIT_SUCCESS=false
 if command -v git &> /dev/null; then
     echo "Cloning repository from ${REPO_URL}..."
-    if git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TEMP_DIR}/blacksmith" 2>&1; then
+    # Suppress git progress output (it goes to stderr and can confuse error handling)
+    if git clone --depth 1 --branch "${BRANCH}" --quiet "${REPO_URL}" "${TEMP_DIR}/blacksmith" 2>&1; then
         GIT_SUCCESS=true
     else
         echo -e "${YELLOW}⚠${NC} Git clone failed, trying direct download..."
@@ -210,14 +211,38 @@ echo -e "${BLUE}Installing Blacksmith (method: ${INSTALL_METHOD})...${NC}"
 case "${INSTALL_METHOD}" in
     venv)
         echo "Creating virtual environment..."
-        ${PYTHON_CMD} -m venv "${TEMP_DIR}/venv"
-        source "${TEMP_DIR}/venv/bin/activate"
-        # In venv, use the venv's python directly
+        VENV_PATH="${HOME}/.blacksmith-venv"
+        
+        # Check if venv already exists
+        if [ -d "${VENV_PATH}" ]; then
+            echo -e "${YELLOW}⚠${NC} Virtual environment already exists at ${VENV_PATH}"
+            echo "Removing old virtual environment..."
+            rm -rf "${VENV_PATH}"
+        fi
+        
+        # Create venv
+        ${PYTHON_CMD} -m venv "${VENV_PATH}"
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}✗${NC} Failed to create virtual environment"
+            exit 1
+        fi
+        
+        # Activate venv and install
+        source "${VENV_PATH}/bin/activate"
         python -m pip install --upgrade pip
         python -m pip install -e "${INSTALL_DIR}"
+        
         echo -e "${GREEN}✓${NC} Blacksmith installed in virtual environment"
-        echo -e "${YELLOW}⚠${NC} Remember to activate the virtual environment:"
-        echo "  source ${TEMP_DIR}/venv/bin/activate"
+        echo ""
+        echo -e "${YELLOW}To use Blacksmith, activate the virtual environment:${NC}"
+        echo -e "${BLUE}  source ${VENV_PATH}/bin/activate${NC}"
+        echo ""
+        echo -e "${YELLOW}Or create an alias in your shell profile (~/.bashrc or ~/.zshrc):${NC}"
+        echo -e "${BLUE}  alias blacksmith=\"${VENV_PATH}/bin/blacksmith\"${NC}"
+        echo ""
+        echo -e "${YELLOW}To activate automatically, add this to your shell profile:${NC}"
+        echo -e "${BLUE}  export BLACKSMITH_VENV=\"${VENV_PATH}\"${NC}"
+        echo -e "${BLUE}  [ -f \"\${BLACKSMITH_VENV}/bin/activate\" ] && source \"\${BLACKSMITH_VENV}/bin/activate\"${NC}"
         ;;
     user)
         echo "Installing for current user..."
