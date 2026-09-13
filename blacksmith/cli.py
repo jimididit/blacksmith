@@ -553,11 +553,10 @@ def install_packages(
                 missing = [m for m in pkg_manager_names if m not in available_manager_names]
                 if missing:
                     print_warning(f"{pkg_name}: Required managers not available: {', '.join(missing)}")
-            if apply_mode:
-                outcomes.append(PackageOutcome(
-                    pkg_name, "", "none", "install", PackageStatus.FAILED,
-                    message="no available manager",
-                ))
+            outcomes.append(PackageOutcome(
+                pkg_name, "", "none", "install", PackageStatus.FAILED,
+                message="no available manager",
+            ))
             continue
 
         mgr, pkg_id = manager_info
@@ -565,11 +564,10 @@ def install_packages(
         if not id_ok:
             print_error(f"{pkg_name}: refusing unsafe package ID for {mgr.name}: {id_error}")
             not_found.append(pkg_name)
-            if apply_mode:
-                outcomes.append(PackageOutcome(
-                    pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
-                    message=id_error or "unsafe package ID",
-                ))
+            outcomes.append(PackageOutcome(
+                pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
+                message=id_error or "unsafe package ID",
+            ))
             continue
 
         pkg_managers = pkg.get("managers", {})
