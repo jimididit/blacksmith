@@ -12,7 +12,7 @@ VALID_OS = ["windows", "linux", "darwin", "macos"]
 VALID_MANAGERS = [
     "apt", "pacman", "yum", "dnf",
     "winget", "chocolatey", "scoop",
-    "snap", "flatpak"
+    "snap", "flatpak", "brew",
 ]
 
 
