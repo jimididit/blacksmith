@@ -6,24 +6,35 @@
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/jimididit/blacksmith/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/jimididit/blacksmith)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/jimididit/blacksmith)
 [![GitHub](https://img.shields.io/badge/GitHub-jimididit%2Fblacksmith-blue.svg)](https://github.com/jimididit/blacksmith)
 
 ## ✨ Features
 
 - 🎯 **Pre-made tool sets** - Choose from curated sets of development or cybersecurity tools
 - 🛠️ **Custom configurations** - Create your own sets or use custom config files
-- 🔍 **Unified package search** - Search across all selected managers simultaneously with multi-select support
-- 🌐 **Cross-platform sets** - Define sets that work on Windows, Linux, or both with OS-specific manager preferences
-- 📦 **Multiple package managers** - Supports apt, yum, pacman, winget, chocolatey, scoop, snap, flatpak, and Homebrew (brew)
-- 🎯 **Smart manager selection** - Automatically uses preferred package managers with intelligent fallback
-- ✨ **Beautiful CLI** - Clean, intuitive interface with progress indicators and helpful feedback
-- 🎨 **Custom color scheme** - Elegant purple and cyan theme
-- ⚡ **Fast installation** - Automatically detects and uses the best package manager for each tool
-- ✅ **Package ID safety** - Allowlists package IDs and search queries before they reach package managers (does not prove a package exists upstream)
-- 📤 **Export functionality** - Export sets to native package manager formats (Winget JSON, Chocolatey XML, etc.)
-- 🔄 **Update support** - Check for installed packages and update them when available
-- 📊 **Set information** - View detailed information about sets including OS compatibility and manager preferences
+- 🔍 **Unified package search** - Search across available managers with multi-select support
+- 🌐 **Cross-platform sets** - Define sets for Windows, Linux, and/or macOS with OS-specific manager preferences
+- 📦 **Multiple package managers** - apt, yum, pacman, winget, chocolatey, scoop, snap, flatpak, and Homebrew (brew)
+- 🎯 **Smart manager selection** - Preferred managers with automatic fallback
+- ✨ **Beautiful CLI** - Progress indicators and clear feedback
+- ⚡ **Automation-friendly installs** - `--yes`, `--dry-run`, and `--fail-fast` for CI / non-TTY use
+- ✅ **Package ID safety** - Allowlists package IDs and search queries before they reach package managers (does **not** prove a package exists upstream or that its contents are safe)
+- 📤 **Export** - Export sets to native formats (Winget JSON, Chocolatey XML, apt/pacman lists, scoop)
+- 🔄 **Update support** - Detect installed packages and update when available
+- 📊 **Set information** - OS compatibility and manager preferences per set
+
+## 🛡️ Trust & threat model
+
+Blacksmith installs software by invoking your local package managers. Treat set YAML like code you are willing to run.
+
+| Source | What Blacksmith guarantees | What it does **not** guarantee |
+|--------|----------------------------|--------------------------------|
+| Built-in sets (`development`, `minimal`, …) | Schema validation; package IDs pass an argv allowlist; managers are called with `shell=False` | That upstream packages are benign, correctly named, or pinned to a version |
+| Your own YAML | Same technical checks | Same — you own the IDs you write |
+| Third-party / shared `--file` YAML | Untrusted-source warning; non-interactive use requires `--yes` or `--dry-run`; ID allowlist blocks shell metacharacters and leading `-` | Cryptographic authenticity (no signatures yet); live “does this package exist?” lookup on every install; rollback after partial failure |
+
+**Practical rule:** Only install sets you authored or fully reviewed. A valid ID like `evilcorp.Backdoor` still installs if the manager resolves it. Sharing a set is sharing a list of package-manager operands, not a verified supply chain.
 
 ## 📋 Prerequisites
 
@@ -149,8 +160,21 @@ blacksmith list
 # View detailed set information
 blacksmith info <set_name>
 
-# Install a set
+# Install a built-in set
 blacksmith install <set_name>
+
+# Preview plan without installing
+blacksmith install <set_name> --dry-run
+
+# Non-interactive / CI (required when stdin is not a TTY)
+blacksmith install <set_name> --yes
+
+# Stop after the first package failure (default: best-effort continue)
+blacksmith install <set_name> --fail-fast
+
+# Custom YAML — treat as untrusted; prefer --dry-run first, then --yes
+blacksmith install --file path/to/your-config.yaml --dry-run
+blacksmith install --file path/to/your-config.yaml --yes
 
 # Create a custom set
 blacksmith create
@@ -161,11 +185,11 @@ blacksmith search <query> [--manager <name>]
 # Export set to native format
 blacksmith export <set_name> --format <format>
 
-# Validate a config file
+# Validate a config file (schema + ID allowlist; not upstream existence)
 blacksmith validate <path>
 
 # Uninstall Blacksmith
-blacksmith uninstall
+blacksmith uninstall [--yes]
 ```
 
 ### Interactive Mode
@@ -209,8 +233,12 @@ blacksmith install minimal
 ### Install from Custom Config
 
 ```bash
-blacksmith install --file path/to/your-config.yaml
+# Always review third-party YAML before installing
+blacksmith install --file path/to/your-config.yaml --dry-run
+blacksmith install --file path/to/your-config.yaml --yes
 ```
+
+> ⚠️ **Trust warning:** `--file` loads arbitrary YAML. Blacksmith prints an untrusted-source notice and, without a TTY, requires `--yes` or `--dry-run`. Package IDs are allowlisted for argv safety only — they are **not** a content or reputation check. See [Trust & threat model](#trust--threat-model).
 
 ### Create Your Own Set
 
@@ -224,13 +252,12 @@ blacksmith create --advanced
 
 This launches an interactive wizard to create a custom tool set configuration. The wizard includes:
 
-- **OS selection**: Choose Windows, Linux, or both for cross-platform sets
-- **Manager selection**: Select which package managers to target for each OS
-- **Unified search**: Search across all selected managers simultaneously - see results from all managers at once
-- **Multi-select**: Select packages from multiple managers in one go using checkboxes
-- **Smart grouping**: Automatically groups the same package from different managers
-- **Real-time validation**: Verify package names before adding them
-- **Export ready**: Sets are saved with OS compatibility and manager preferences for optimal installation
+- **OS selection**: Windows, Linux, macOS, or combinations
+- **Manager selection**: Which package managers to target per OS (including `brew` on macOS)
+- **Unified search**: Search across selected managers and multi-select results
+- **Smart grouping**: Groups the same package from different managers
+- **ID checks**: Package IDs must pass the argv allowlist (not live upstream validation)
+- **Export ready**: Sets are saved with OS compatibility and manager preferences
 
 ### Search for Packages
 
@@ -304,9 +331,13 @@ blacksmith export development --format winget --output my-packages.json
 blacksmith validate path/to/config.yaml
 ```
 
+Checks YAML structure, known manager names, and package-ID allowlist rules. It does **not** query package managers to confirm packages exist upstream.
 ### Installation Options
 
 ```bash
+# Preview resolved (package, manager, id, action) without installing
+blacksmith install development --dry-run
+
 # Skip already installed packages
 blacksmith install development --skip-installed
 
@@ -328,7 +359,7 @@ blacksmith install --file ./my-set.yaml --yes
 
 **Non-interactive:** If stdin is not a TTY, `install` requires `--yes` or `--dry-run`. Interactive confirmation and “already installed?” prompts are not available without a terminal.
 
-**Privileges:** On Linux, `apt` / `pacman` / `yum|dnf` / `snap` may prompt for sudo. **Flatpak** is a supported Linux manager and does not use that sudo path.
+**Privileges:** On Linux, `apt` / `pacman` / `yum|dnf` / `snap` may prompt for sudo. **Flatpak** and **Homebrew** do not use that sudo path.
 
 ### Uninstall Blacksmith
 
@@ -376,16 +407,18 @@ packages:
 
 ```yaml
 name: "Cross-Platform Dev Tools"
-description: "Development tools for Windows and Linux"
-target_os: ["windows", "linux"]  # OS compatibility
+description: "Development tools for Windows, Linux, and macOS"
+target_os: ["windows", "linux", "macos"]  # OS compatibility
 preferred_managers:              # Manager preferences per OS
   windows: ["winget", "chocolatey"]
   linux: ["apt", "flatpak"]
+  macos: ["brew"]
 managers_supported:              # Limit to specific managers
   - winget
   - chocolatey
   - apt
   - flatpak
+  - brew
 packages:
   - name: git
     managers:
@@ -393,16 +426,17 @@ packages:
       chocolatey: git
       apt: git
       flatpak: org.gnome.gitg
+      brew: git
 ```
 
 **Configuration Fields:**
 
 - `name` (required) - Set name
 - `description` (optional) - Set description
-- `target_os` (optional) - List of target OSes: `["windows"]`, `["linux"]`, or `["windows", "linux"]`
+- `target_os` (optional) - Target OSes: `windows`, `linux`, `macos` / `darwin` (string or list)
 - `preferred_managers` (optional) - Dictionary mapping OS to preferred manager order
 - `managers_supported` (optional) - List of managers to limit installation to
-- `packages` (required) - List of packages with manager-specific IDs
+- `packages` (required) - List of packages with manager-specific IDs (each ID must pass the argv allowlist)
 
 ## 📦 Supported Package Managers
 
@@ -429,7 +463,7 @@ packages:
 Blacksmith automatically detects which package managers are available on your system and uses intelligent selection:
 
 - **Preference-based**: Uses `preferred_managers` from the set configuration if specified
-- **OS-specific defaults**: Falls back to sensible defaults (e.g., `winget` > `chocolatey` > `scoop` on Windows)
+- **OS-specific defaults**: Falls back to sensible defaults (e.g., `winget` > `chocolatey` > `scoop` on Windows; `brew` on macOS)
 - **Fallback logic**: If preferred manager isn't available, tries the next one in order
 - **OS compatibility**: Checks if the set is compatible with your OS (can be overridden with `--force`)
 - **Manager filtering**: Respects `managers_supported` to limit which managers are considered
@@ -509,7 +543,7 @@ blacksmith/
 │   │   ├── apt.py          # Apt list exporter
 │   │   ├── pacman.py       # Pacman list exporter
 │   │   └── scoop.py        # Scoop JSON exporter
-│   ├── package_managers/   # Package manager implementations
+│   ├── package_managers/   # Manager backends (apt, brew, winget, …) + results.py
 │   ├── sets/               # Pre-made tool sets
 │   └── utils/              # Utility modules
 │       ├── deferred_delete.py  # Safe post-exit cleanup helpers
@@ -522,6 +556,7 @@ blacksmith/
 ├── tests/                  # Test suite
 ├── requirements.txt        # Runtime dependency ranges
 ├── requirements.lock       # Pinned deps for reproducible audits
+├── CONTRIBUTING.md         # Branch / PR / CI workflow (source of truth)
 ├── scripts/                # Helper scripts
 │   └── bump_version.py     # Version bumping script
 └── README.md
