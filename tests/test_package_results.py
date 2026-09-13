@@ -67,8 +67,8 @@ def test_best_effort_installs_all_packages(
     progress.update = Mock()
     mock_progress.return_value = progress
 
-    ok = install_packages(_config_three_pkgs(), show_summary=True, assume_yes=True)
-    assert ok is False
+    result = install_packages(_config_three_pkgs(), show_summary=True, assume_yes=True)
+    assert result.ok is False
     assert mgr.install.call_count == 3
     assert mgr.install.call_args_list[0].args[0] == ["one"]
     assert mgr.install.call_args_list[1].args[0] == ["two"]
@@ -97,13 +97,13 @@ def test_fail_fast_stops_after_first_failure(
     progress.update = Mock()
     mock_progress.return_value = progress
 
-    ok = install_packages(
+    result = install_packages(
         _config_three_pkgs(),
         show_summary=True,
         assume_yes=True,
         fail_fast=True,
     )
-    assert ok is False
+    assert result.ok is False
     assert mgr.install.call_count == 2
     called_ids = [c.args[0][0] for c in mgr.install.call_args_list]
     assert called_ids == ["one", "two"]

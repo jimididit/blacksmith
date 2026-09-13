@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `blacksmith apply`: idempotent ensure-state (skip installed, post-install verify)
+- Apply exit codes: `0` compliant, `2` changed, `1` failed
+
 ## [0.4.0] - 2026-09-12
 
 Platform and docs release: Homebrew on macOS, trust docs, and README cleanup.
