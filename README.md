@@ -111,9 +111,11 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith install <set> --yes` | Non-interactive (required without a TTY) |
 | `blacksmith install <set> --fail-fast` | Stop on first package failure |
 | `blacksmith install --file path.yaml --yes` | Install custom YAML ([untrusted](#trust)) |
+| `blacksmith install --file path.yaml --require-signature` | Require minisign verify before install |
 | `blacksmith apply <set> --yes` | Ensure set state (idempotent; skip installed) |
 | `blacksmith apply <set> --dry-run` | Preview apply plan only |
 | `blacksmith apply --file path.yaml --yes` | Apply custom YAML ([untrusted](#trust)) |
+| `blacksmith apply --file path.yaml --require-signature` | Require minisign verify before apply |
 | `blacksmith create` / `create --advanced` | Create a set |
 | `blacksmith search <query> [--manager name]` | Search managers |
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
@@ -122,6 +124,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 Apply also supports `--prefer`, `--force`, and `--fail-fast`.
+Signature flags (with `--file`): `--require-signature`, `--signature PATH`, `--pubkey PATH`.
 
 **Apply exit codes:** `0` already compliant, `2` changed with no failures, `1` failures. Install stays `0`/`1`.
 
@@ -176,6 +179,14 @@ macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The 
 ## Trust
 
 Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`.
+
+Optional authenticity (minisign): authors sign with `minisign -Sm set.yaml` and distribute `set.yaml` + `set.yaml.minisig` + their `.pub`. Operators add the pubkey under `~/.config/blacksmith/trusted_keys/` (Linux/macOS), `%APPDATA%\blacksmith\trusted_keys\` (Windows), or pass `--pubkey`, then:
+
+```bash
+blacksmith install --file path/to/set.yaml --require-signature --yes
+```
+
+Without `--require-signature`, unsigned `--file` behavior is unchanged. Requires the `minisign` CLI on PATH.
 
 Threat model, reporting vulnerabilities, and a safe review workflow: [SECURITY.md](SECURITY.md).
 

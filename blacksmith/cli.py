@@ -733,6 +733,9 @@ def list_sets():
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts (required for non-interactive custom --file installs)")
 @click.option("--dry-run", is_flag=True, help="Show what would be installed without making changes")
 @click.option("--fail-fast", is_flag=True, help="Stop after the first install/update failure (default: continue best-effort)")
+@click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file (fail closed)")
+@click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
+@click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 def install(
     set_name: Optional[str],
     config_file: Optional[str],
@@ -742,12 +745,35 @@ def install(
     assume_yes: bool,
     dry_run: bool,
     fail_fast: bool,
+    require_signature: bool,
+    signature_file: Optional[str],
+    pubkey_file: Optional[str],
 ):
     """Install tools from a pre-made set or custom config file."""
+    from pathlib import Path
+
+    from blacksmith.trust.verify import verify_set_signature
+
+    if require_signature and not config_file:
+        print_error("--require-signature only applies with --file.")
+        sys.exit(1)
+
     config = None
     config_source = None
     
     if config_file:
+        if require_signature:
+            extras = [Path(pubkey_file)] if pubkey_file else None
+            sig = Path(signature_file) if signature_file else None
+            verified = verify_set_signature(
+                Path(config_file),
+                signature_path=sig,
+                extra_pubkeys=extras,
+            )
+            if not verified.ok:
+                print_error(verified.message)
+                sys.exit(1)
+            print_info(verified.message)
         # Load custom config
         config = load_custom_config(config_file)
         if not config:
@@ -794,6 +820,9 @@ def install(
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts (required for non-interactive custom --file applies)")
 @click.option("--dry-run", is_flag=True, help="Show what would change without making changes")
 @click.option("--fail-fast", is_flag=True, help="Stop after the first install/verify failure (default: continue best-effort)")
+@click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file (fail closed)")
+@click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
+@click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 def apply(
     set_name: Optional[str],
     config_file: Optional[str],
@@ -802,16 +831,39 @@ def apply(
     assume_yes: bool,
     dry_run: bool,
     fail_fast: bool,
+    require_signature: bool,
+    signature_file: Optional[str],
+    pubkey_file: Optional[str],
 ):
     """Ensure a set matches desired state (idempotent).
 
     Skips already-installed packages, installs missing ones, verifies after install.
     Exit codes: 0 already compliant, 2 changed with no failures, 1 failures.
     """
+    from pathlib import Path
+
+    from blacksmith.trust.verify import verify_set_signature
+
+    if require_signature and not config_file:
+        print_error("--require-signature only applies with --file.")
+        sys.exit(1)
+
     config = None
     config_source = None
 
     if config_file:
+        if require_signature:
+            extras = [Path(pubkey_file)] if pubkey_file else None
+            sig = Path(signature_file) if signature_file else None
+            verified = verify_set_signature(
+                Path(config_file),
+                signature_path=sig,
+                extra_pubkeys=extras,
+            )
+            if not verified.ok:
+                print_error(verified.message)
+                sys.exit(1)
+            print_info(verified.message)
         config = load_custom_config(config_file)
         if not config:
             print_error(f"Failed to load config file: {config_file}")

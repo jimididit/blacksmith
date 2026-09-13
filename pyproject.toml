@@ -42,8 +42,9 @@ packages = [
     "blacksmith.export",
     "blacksmith.package_managers",
     "blacksmith.sets",
+    "blacksmith.trust",
     "blacksmith.utils",
 ]
 
 [tool.setuptools.package-data]
-blacksmith = ["sets/*.yaml"]
+blacksmith = ["sets/*.yaml", "keys/*.pub", "keys/README.md", "keys/.gitkeep"]

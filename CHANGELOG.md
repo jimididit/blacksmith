@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--require-signature` for `install --file` / `apply --file` (minisign CLI verify)
+- Trusted keys: packaged `blacksmith/keys/*.pub`, user `trusted_keys/`, optional `--pubkey`
+- `--signature` override for detached `.minisig` path
+
 ## [0.4.1] - 2026-09-13
 
 Patch release: uninstall reliability for pipx and Windows, plus the new `apply` command.
