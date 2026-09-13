@@ -45,7 +45,7 @@ def show_banner():
     import platform
     import sys
     
-    # ASCII art for blacksmith (lowercase)
+    # Lame asf ASCII art for blacksmith (lowercase)
     ascii_art = r"""
   _     _            _                  _ _   _     
  | |__ | | __ _  ___| | _____ _ __ ___ (_) |_| |__  
@@ -645,14 +645,15 @@ def record_self_uninstall_audit(
     status: PackageStatus,
     exit_code: int,
     no_audit: bool,
+    package: str = "jdi-blacksmith",
 ) -> None:
     """Append audit lines for an attempted self-uninstall."""
     _record_audit_fail_open(
         command="uninstall",
         outcomes=[
             PackageOutcome(
-                "jdi-blacksmith",
-                "jdi-blacksmith",
+                package,
+                package,
                 manager,
                 "uninstall",
                 status,
@@ -1930,6 +1931,7 @@ def uninstall(yes, no_audit):
                         status=PackageStatus.OK,
                         exit_code=0,
                         no_audit=no_audit,
+                        package=pkg,
                     )
                     return
                 err = (result.stderr or result.stdout or "").strip()
@@ -1958,6 +1960,7 @@ def uninstall(yes, no_audit):
                     status=PackageStatus.FAILED,
                     exit_code=0,
                     no_audit=no_audit,
+                    package=pkg,
                 )
                 return
 
@@ -1970,6 +1973,7 @@ def uninstall(yes, no_audit):
             status=PackageStatus.FAILED,
             exit_code=1,
             no_audit=no_audit,
+            package=pkg,
         )
         sys.exit(1)
 

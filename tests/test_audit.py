@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -83,6 +84,27 @@ def test_record_audit_writes_run_and_packages(tmp_path, monkeypatch):
     assert pkg["status"] == "ok"
 
 
+def test_record_audit_hashes_config_file(tmp_path, monkeypatch):
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(
+        "blacksmith.audit.log.default_audit_log_path", lambda: log
+    )
+    config = tmp_path / "set.yaml"
+    config.write_text("name: t\npackages: []\n", encoding="utf-8")
+    expected = hashlib.sha256(config.read_bytes()).hexdigest()
+
+    record_audit(
+        command="install",
+        outcomes=[PackageOutcome("git", "git", "apt", "install", PackageStatus.OK)],
+        exit_code=0,
+        config_path=str(config),
+    )
+
+    run = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    assert run["config_path"] == str(config)
+    assert run["config_hash"] == expected
+
+
 def test_record_audit_noop_when_all_skipped(tmp_path, monkeypatch):
     log = tmp_path / "audit.jsonl"
     monkeypatch.setattr(
@@ -135,6 +157,41 @@ def test_record_audit_fail_open(tmp_path):
     )
     assert run_id is None
     assert warnings
+
+
+def test_record_audit_fail_open_on_path_error(monkeypatch):
+    def boom():
+        raise RuntimeError("no home dir")
+
+    monkeypatch.setattr("blacksmith.audit.log.default_audit_log_path", boom)
+    warnings = []
+
+    run_id = record_audit(
+        command="install",
+        outcomes=[PackageOutcome("a", "a", "apt", "install", PackageStatus.OK)],
+        exit_code=0,
+        warn=warnings.append,
+    )
+
+    assert run_id is None
+    assert "no home dir" in warnings[0]
+
+
+def test_record_audit_fail_open_on_serialization_error(tmp_path, monkeypatch):
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("blacksmith.audit.log.default_audit_log_path", lambda: log)
+    warnings = []
+
+    run_id = record_audit(
+        command="install",
+        outcomes=[PackageOutcome("a", "a", "apt", "install", PackageStatus.OK)],
+        exit_code="not-an-int",
+        warn=warnings.append,
+    )
+
+    assert run_id is None
+    assert warnings
+    assert not log.exists()
 
 
 def test_load_events_last_n_and_corrupt(tmp_path):
@@ -345,6 +402,47 @@ def test_install_survives_unexpected_audit_error():
 
     assert invoked.exit_code == 0
     assert "Audit log write failed" in invoked.output
+
+
+def test_record_self_uninstall_audit_writes_lines(tmp_path, monkeypatch):
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("blacksmith.audit.log.default_audit_log_path", lambda: log)
+
+    record_self_uninstall_audit(
+        manager="pipx",
+        status=PackageStatus.OK,
+        exit_code=0,
+        no_audit=False,
+    )
+
+    lines = log.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    run = json.loads(lines[0])
+    pkg = json.loads(lines[1])
+    assert run["command"] == "uninstall"
+    assert run["exit"] == 0
+    assert pkg["name"] == "jdi-blacksmith"
+    assert pkg["manager"] == "pipx"
+    assert pkg["action"] == "uninstall"
+    assert pkg["status"] == "ok"
+
+
+def test_record_self_uninstall_audit_uses_resolved_package(tmp_path, monkeypatch):
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("blacksmith.audit.log.default_audit_log_path", lambda: log)
+
+    record_self_uninstall_audit(
+        manager="pipx",
+        status=PackageStatus.FAILED,
+        exit_code=1,
+        no_audit=False,
+        package="blacksmith",
+    )
+
+    pkg = json.loads(log.read_text(encoding="utf-8").strip().splitlines()[1])
+    assert pkg["name"] == "blacksmith"
+    assert pkg["id"] == "blacksmith"
+    assert pkg["status"] == "failed"
 
 
 def test_uninstall_survives_unexpected_audit_error():

@@ -142,7 +142,7 @@ blacksmith audit
 blacksmith audit --last 20
 ```
 
-Mutating `install` / `apply` (and self-`uninstall`) append events to a local JSONL file (`audit.jsonl`) under the platform config directory unless `--no-audit` or `BLACKSMITH_NO_AUDIT=1` is set. Dry-run and no-op runs are not logged.
+Mutating `install` / `apply` (and self-`uninstall`) append events to a local JSONL file (`audit.jsonl`) under the platform config directory unless `--no-audit` or `BLACKSMITH_NO_AUDIT` (truthy: `1`, `true`, `yes`) is set. Dry-run and no-op runs are not logged.
 
 Default path: `%APPDATA%\blacksmith\audit.jsonl` (Windows) or `~/.config/blacksmith/audit.jsonl` (Linux/macOS; honors `XDG_CONFIG_HOME`).
 

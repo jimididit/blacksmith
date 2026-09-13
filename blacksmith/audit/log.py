@@ -73,51 +73,54 @@ def record_audit(
     if not auditable:
         return None
 
-    path = log_path or default_audit_log_path()
     run_id = uuid.uuid4().hex
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    config_hash = file_sha256(Path(config_path)) if config_path else None
 
-    run_obj = {
-        "type": "run",
-        "ts": timestamp,
-        "run_id": run_id,
-        "command": command,
-        "set": set_name,
-        "config_path": config_path,
-        "config_hash": config_hash,
-        "user": _username(),
-        "exit": int(exit_code),
-    }
-    lines = [json.dumps(run_obj, separators=(",", ":"))]
-    for outcome in auditable:
-        lines.append(
-            json.dumps(
-                {
-                    "type": "package",
-                    "ts": timestamp,
-                    "run_id": run_id,
-                    "name": outcome.package_name,
-                    "id": outcome.package_id,
-                    "manager": outcome.manager,
-                    "action": outcome.action,
-                    "status": (
-                        outcome.status.value
-                        if isinstance(outcome.status, PackageStatus)
-                        else str(outcome.status)
-                    ),
-                    "exit": None,
-                },
-                separators=(",", ":"),
-            )
-        )
-
+    # Path resolution, serialization, and the write all fail open: a broken
+    # audit log must never change the exit code of a mutate command.
     try:
+        path = log_path or default_audit_log_path()
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        config_hash = file_sha256(Path(config_path)) if config_path else None
+
+        run_obj = {
+            "type": "run",
+            "ts": timestamp,
+            "run_id": run_id,
+            "command": command,
+            "set": set_name,
+            "config_path": config_path,
+            "config_hash": config_hash,
+            "user": _username(),
+            "exit": int(exit_code),
+        }
+        lines = [json.dumps(run_obj, separators=(",", ":"))]
+        for outcome in auditable:
+            lines.append(
+                json.dumps(
+                    {
+                        "type": "package",
+                        "ts": timestamp,
+                        "run_id": run_id,
+                        "name": outcome.package_name,
+                        "id": outcome.package_id,
+                        "manager": outcome.manager,
+                        "action": outcome.action,
+                        "status": (
+                            outcome.status.value
+                            if isinstance(outcome.status, PackageStatus)
+                            else str(outcome.status)
+                        ),
+                        "exit": None,
+                    },
+                    separators=(",", ":"),
+                )
+            )
+
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as file:
             file.write("\n".join(lines) + "\n")
             file.flush()
-    except OSError as exc:
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
         if warn:
             warn(f"Audit log write failed: {exc}")
         return None
