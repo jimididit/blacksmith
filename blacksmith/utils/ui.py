@@ -32,6 +32,9 @@ custom_theme = Theme({
 if sys.platform == "win32":
     # Windows console may not support Unicode characters
     console = Console(theme=custom_theme, force_terminal=True, legacy_windows=True)
+    err_console = Console(
+        theme=custom_theme, force_terminal=True, legacy_windows=True, stderr=True
+    )
     # ASCII-safe symbols for Windows
     SYMBOL_SUCCESS = "[OK]"
     SYMBOL_ERROR = "[X]"
@@ -45,6 +48,7 @@ if sys.platform == "win32":
     }
 else:
     console = Console(theme=custom_theme)
+    err_console = Console(theme=custom_theme, stderr=True)
     # Unicode symbols for Unix-like systems
     SYMBOL_SUCCESS = "✓"
     SYMBOL_ERROR = "✗"
@@ -103,14 +107,19 @@ def print_success(message: str) -> None:
     console.print(f"[bold #44FFD1]{SYMBOL_SUCCESS}[/bold #44FFD1] {message}")
 
 
+def _diagnostic_console() -> Console:
+    """When stdout is reserved (``--json`` quiets the console), keep the reason on stderr."""
+    return err_console if console.quiet else console
+
+
 def print_error(message: str) -> None:
     """Print an error message."""
-    console.print(f"[bold #FF6B6B]{SYMBOL_ERROR}[/bold #FF6B6B] {message}")
+    _diagnostic_console().print(f"[bold #FF6B6B]{SYMBOL_ERROR}[/bold #FF6B6B] {message}")
 
 
 def print_warning(message: str) -> None:
     """Print a warning message."""
-    console.print(f"[bold #FFD93D]{SYMBOL_WARNING}[/bold #FFD93D] {message}")
+    _diagnostic_console().print(f"[bold #FFD93D]{SYMBOL_WARNING}[/bold #FFD93D] {message}")
 
 
 def print_info(message: str) -> None:

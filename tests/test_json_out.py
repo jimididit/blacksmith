@@ -54,7 +54,26 @@ def test_run_result_data_serializes_outcomes():
 
 
 def _parse_cli_json(result):
-    return json.loads(result.output.strip().splitlines()[-1])
+    """stdout must be exactly one JSON object; diagnostics belong on stderr."""
+    return json.loads(result.stdout.strip())
+
+
+class FakeManager:
+    """Detected manager stand-in for install/apply paths."""
+
+    def __init__(self, name="apt", installed=()):
+        self.name = name
+        self._installed = set(installed)
+
+    def is_installed(self, package_id):
+        return package_id in self._installed
+
+
+@pytest.fixture(autouse=True)
+def _detected_managers():
+    """install/apply pre-check detection, so pin it instead of using the host."""
+    with patch("blacksmith.cli.detect_available_managers", return_value=[FakeManager()]):
+        yield
 
 
 @pytest.mark.parametrize(
@@ -356,9 +375,11 @@ def test_json_install_failed_run():
     assert result.exit_code == 1
     body = _parse_cli_json(result)
     assert body["ok"] is False
-    assert "data" not in body
     assert body["error"]["code"] == "install_failed"
     assert "git" in body["error"]["message"]
+    # Additive: failures still carry the per-package outcomes for scripting.
+    assert body["data"]["outcomes"][0]["status"] == "failed"
+    assert body["data"]["summary"]["failed"] == 1
 
 
 def test_json_install_cancelled_run():
@@ -466,6 +487,238 @@ def test_json_mutate_require_signature_without_file(command):
     body = _parse_cli_json(result)
     assert body["error"]["code"] == "needs_args"
     assert "--file" in body["error"]["message"]
+
+
+PLAN_CONFIG = {
+    "name": "planned",
+    "packages": [
+        {"name": "git", "managers": {"apt": "git"}},
+        {"name": "curl", "managers": {"apt": "curl"}},
+        {"name": "ripgrep", "managers": {"brew": "ripgrep"}},
+    ],
+}
+
+
+def _plan_outcomes(body):
+    return {outcome["name"]: outcome for outcome in body["data"]["outcomes"]}
+
+
+def test_json_install_dry_run_returns_planned_outcomes():
+    manager = FakeManager("apt", installed={"curl"})
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[manager]
+    ), patch("blacksmith.cli.load_set", return_value=PLAN_CONFIG), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["--json", "install", "planned", "--dry-run"])
+
+    assert result.exit_code == 0
+    body = _parse_cli_json(result)
+    assert body["ok"] is True
+    assert body["data"]["dry_run"] is True
+
+    outcomes = _plan_outcomes(body)
+    assert outcomes["git"]["action"] == "install"
+    assert outcomes["git"]["manager"] == "apt"
+    assert outcomes["curl"]["action"] == "skip"
+    assert outcomes["curl"]["status"] == "skipped"
+    assert outcomes["ripgrep"]["action"] == "unavailable"
+    assert body["data"]["summary"]["changed"] == 1
+    assert body["data"]["summary"]["skipped"] == 1
+    assert body["data"]["summary"]["failed"] == 1
+
+
+def test_json_apply_dry_run_plans_changes_but_exits_zero():
+    manager = FakeManager("apt")
+    config = {"name": "planned", "packages": [{"name": "git", "managers": {"apt": "git"}}]}
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[manager]
+    ), patch("blacksmith.cli.load_set", return_value=config), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["--json", "apply", "planned", "--dry-run"])
+
+    assert result.exit_code == 0
+    body = _parse_cli_json(result)
+    assert body["data"]["summary"]["changed"] == 1
+    assert body["data"]["outcomes"][0]["action"] == "install"
+
+
+def test_human_dry_run_still_exits_zero_and_prints_plan():
+    manager = FakeManager("apt")
+    config = {"name": "planned", "packages": [{"name": "git", "managers": {"apt": "git"}}]}
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[manager]
+    ), patch("blacksmith.cli.load_set", return_value=config), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["install", "planned", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Dry-run" in result.output
+
+
+@pytest.mark.parametrize("command", ["install", "apply"])
+def test_json_mutate_no_managers(command):
+    with patch("blacksmith.cli.detect_available_managers", return_value=[]), patch(
+        "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
+    ), patch("blacksmith.cli.install_packages") as mock_install:
+        result = CliRunner().invoke(cli, ["--json", command, "minimal", "--yes"])
+
+    assert result.exit_code == 1
+    body = _parse_cli_json(result)
+    assert body["command"] == command
+    assert body["error"]["code"] == "no_managers"
+    mock_install.assert_not_called()
+
+
+def test_json_install_os_mismatch_is_diagnosable():
+    config = {"name": "other-os", "target_os": ["plan9"], "packages": []}
+    with patch("blacksmith.cli.load_set", return_value=config), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["--json", "install", "other-os", "--yes"])
+
+    assert result.exit_code == 1
+    body = _parse_cli_json(result)
+    assert body["error"]["code"] == "install_failed"
+    assert "OS mismatch" in body["error"]["message"]
+    # The human-readable reason is redirected, not dropped.
+    assert "plan9" in result.stderr
+
+
+def test_print_error_goes_to_stderr_while_quiet(capsys):
+    from blacksmith.utils import ui
+
+    ui.console.quiet = True
+    try:
+        ui.print_error("boom")
+        ui.print_warning("careful")
+        ui.print_info("chatter")
+    finally:
+        ui.console.quiet = False
+
+    captured = capsys.readouterr()
+    assert "boom" in captured.err
+    assert "careful" in captured.err
+    assert captured.out == ""
+    assert "chatter" not in captured.err
+
+
+PLAN_CONFIG = {
+    "name": "planned",
+    "packages": [
+        {"name": "git", "managers": {"apt": "git"}},
+        {"name": "curl", "managers": {"apt": "curl"}},
+        {"name": "ripgrep", "managers": {"brew": "ripgrep"}},
+    ],
+}
+
+
+def _plan_outcomes(body):
+    return {outcome["name"]: outcome for outcome in body["data"]["outcomes"]}
+
+
+def test_json_install_dry_run_returns_planned_outcomes():
+    manager = FakeManager("apt", installed={"curl"})
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[manager]
+    ), patch("blacksmith.cli.load_set", return_value=PLAN_CONFIG), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["--json", "install", "planned", "--dry-run"])
+
+    assert result.exit_code == 0
+    body = _parse_cli_json(result)
+    assert body["ok"] is True
+    assert body["data"]["dry_run"] is True
+
+    outcomes = _plan_outcomes(body)
+    assert outcomes["git"]["action"] == "install"
+    assert outcomes["git"]["manager"] == "apt"
+    assert outcomes["curl"]["action"] == "skip"
+    assert outcomes["curl"]["status"] == "skipped"
+    assert outcomes["ripgrep"]["action"] == "unavailable"
+    assert body["data"]["summary"]["changed"] == 1
+    assert body["data"]["summary"]["skipped"] == 1
+    assert body["data"]["summary"]["failed"] == 1
+
+
+def test_json_apply_dry_run_plans_changes_but_exits_zero():
+    manager = FakeManager("apt")
+    config = {"name": "planned", "packages": [{"name": "git", "managers": {"apt": "git"}}]}
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[manager]
+    ), patch("blacksmith.cli.load_set", return_value=config), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["--json", "apply", "planned", "--dry-run"])
+
+    assert result.exit_code == 0
+    body = _parse_cli_json(result)
+    assert body["data"]["summary"]["changed"] == 1
+    assert body["data"]["outcomes"][0]["action"] == "install"
+
+
+def test_human_dry_run_still_exits_zero_and_prints_plan():
+    manager = FakeManager("apt")
+    config = {"name": "planned", "packages": [{"name": "git", "managers": {"apt": "git"}}]}
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[manager]
+    ), patch("blacksmith.cli.load_set", return_value=config), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["install", "planned", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Dry-run" in result.output
+
+
+@pytest.mark.parametrize("command", ["install", "apply"])
+def test_json_mutate_no_managers(command):
+    with patch("blacksmith.cli.detect_available_managers", return_value=[]), patch(
+        "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
+    ), patch("blacksmith.cli.install_packages") as mock_install:
+        result = CliRunner().invoke(cli, ["--json", command, "minimal", "--yes"])
+
+    assert result.exit_code == 1
+    body = _parse_cli_json(result)
+    assert body["command"] == command
+    assert body["error"]["code"] == "no_managers"
+    mock_install.assert_not_called()
+
+
+def test_json_install_os_mismatch_is_diagnosable():
+    config = {"name": "other-os", "target_os": ["plan9"], "packages": []}
+    with patch("blacksmith.cli.load_set", return_value=config), patch(
+        "blacksmith.cli.record_audit"
+    ):
+        result = CliRunner().invoke(cli, ["--json", "install", "other-os", "--yes"])
+
+    assert result.exit_code == 1
+    body = _parse_cli_json(result)
+    assert body["error"]["code"] == "install_failed"
+    assert "OS mismatch" in body["error"]["message"]
+    # The human-readable reason is redirected, not dropped.
+    assert "plan9" in result.stderr
+
+
+def test_print_error_goes_to_stderr_while_quiet(capsys):
+    from blacksmith.utils import ui
+
+    ui.console.quiet = True
+    try:
+        ui.print_error("boom")
+        ui.print_warning("careful")
+        ui.print_info("chatter")
+    finally:
+        ui.console.quiet = False
+
+    captured = capsys.readouterr()
+    assert "boom" in captured.err
+    assert "careful" in captured.err
+    assert captured.out == ""
+    assert "chatter" not in captured.err
 
 
 def test_json_install_file_reports_config_path(tmp_path):

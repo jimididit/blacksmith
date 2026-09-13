@@ -1,6 +1,7 @@
 """Main CLI interface for Blacksmith."""
 
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -163,6 +164,105 @@ def show_sets_menu():
     return selected
 
 
+@dataclass
+class PlanEntry:
+    """One package as the runner intends to handle it."""
+
+    package_name: str
+    package_id: str
+    manager: Optional[Any]
+    action: str  # install | skip | unavailable
+    manager_options: int = 0
+    message: Optional[str] = None
+
+
+def build_install_plan(
+    config: dict,
+    available_managers: List[Any],
+    preferences: Optional[object] = None,
+    check_installed: bool = True,
+) -> List[PlanEntry]:
+    """Resolve each package to a manager and the action it would get.
+
+    ``check_installed`` calls into the managers, so leave it off when the caller
+    only needs the manager mapping.
+    """
+    from blacksmith.utils.identifiers import validate_package_id
+
+    managers_supported = config.get("managers_supported")
+    plan: List[PlanEntry] = []
+
+    for pkg in config.get("packages", []):
+        pkg_name = pkg.get("name", "Unknown")
+        options = len(pkg.get("managers", {}))
+        manager_info = find_manager_for_package(
+            pkg,
+            available_managers,
+            preferred_order=preferences,
+            managers_supported=managers_supported,
+        )
+        if not manager_info:
+            plan.append(
+                PlanEntry(pkg_name, "", None, "unavailable", options, "no compatible manager")
+            )
+            continue
+
+        mgr, pkg_id = manager_info
+        id_ok, id_error = validate_package_id(pkg_id)
+        if not id_ok:
+            plan.append(
+                PlanEntry(
+                    pkg_name, pkg_id, mgr, "unavailable", options,
+                    id_error or "unsafe package ID",
+                )
+            )
+            continue
+
+        already = False
+        if check_installed:
+            try:
+                already = mgr.is_installed(pkg_id)
+            except Exception:
+                already = False
+
+        if already:
+            plan.append(
+                PlanEntry(pkg_name, pkg_id, mgr, "skip", options, "already installed")
+            )
+        else:
+            plan.append(PlanEntry(pkg_name, pkg_id, mgr, "install", options))
+
+    return plan
+
+
+def dry_run_result(plan: List[PlanEntry]) -> InstallRunResult:
+    """Turn a plan into the run result a dry run reports."""
+    status_for = {
+        "install": PackageStatus.OK,
+        "skip": PackageStatus.SKIPPED,
+        "unavailable": PackageStatus.FAILED,
+    }
+    outcomes = [
+        PackageOutcome(
+            entry.package_name,
+            entry.package_id,
+            entry.manager.name if entry.manager else "none",
+            entry.action,
+            status_for[entry.action],
+            message=entry.message or "planned",
+        )
+        for entry in plan
+    ]
+    return InstallRunResult(
+        ok=all(entry.action != "unavailable" for entry in plan),
+        outcomes=outcomes,
+        changed=sum(1 for entry in plan if entry.action == "install"),
+        skipped=sum(1 for entry in plan if entry.action == "skip"),
+        failed=sum(1 for entry in plan if entry.action == "unavailable"),
+        dry_run=True,
+    )
+
+
 def show_installation_summary(
     config: dict,
     available_managers: List[Any],
@@ -170,10 +270,9 @@ def show_installation_summary(
     assume_yes: bool = False,
     dry_run: bool = False,
     config_source: Optional[str] = None,
+    plan: Optional[List[PlanEntry]] = None,
 ):
     """Show what will be installed before confirmation."""
-    from blacksmith.package_managers.detector import find_manager_for_package
-
     if config_source:
         print_warning(
             "Installing from a custom config file. Treat third-party YAML as untrusted "
@@ -182,42 +281,33 @@ def show_installation_summary(
         print_info(f"Config source: {config_source}")
         console.print()
     
-    packages = config.get("packages", [])
-    managers_supported = config.get("managers_supported")
-    
+    if plan is None:
+        plan = build_install_plan(
+            config, available_managers, preferences, check_installed=dry_run
+        )
+
     rows = []
     plan_lines = []
-    for pkg in packages:
-        pkg_name = pkg.get("name", "Unknown")
-        manager_info = find_manager_for_package(
-            pkg,
-            available_managers,
-            preferred_order=preferences,
-            managers_supported=managers_supported
-        )
-        if manager_info:
-            mgr, pkg_id = manager_info
-            pkg_managers = pkg.get("managers", {})
-            if len(pkg_managers) > 1:
-                manager_display = f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"
-                manager_display += f" [dim](selected from {len(pkg_managers)} options)[/dim]"
-            else:
-                manager_display = f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"
+    for entry in plan:
+        pkg_name = entry.package_name
+        if entry.manager and entry.action != "unavailable":
+            manager_display = f"[bold #44FFD1]{entry.manager.name}[/bold #44FFD1]: {entry.package_id}"
+            if entry.manager_options > 1:
+                manager_display += f" [dim](selected from {entry.manager_options} options)[/dim]"
 
             if dry_run:
-                try:
-                    already = mgr.is_installed(pkg_id)
-                except Exception:
-                    already = False
-                action = "skip (already installed)" if already else "install"
+                action = "skip (already installed)" if entry.action == "skip" else "install"
                 rows.append([pkg_name, manager_display, action])
-                plan_lines.append(f"{action}: {pkg_name} via {mgr.name} ({pkg_id})")
+                plan_lines.append(
+                    f"{action}: {pkg_name} via {entry.manager.name} ({entry.package_id})"
+                )
             else:
                 rows.append([pkg_name, manager_display])
         else:
+            reason = entry.message or "no compatible manager"
             if dry_run:
-                rows.append([pkg_name, "[bold red]No compatible manager[/bold red]", "unavailable"])
-                plan_lines.append(f"unavailable: {pkg_name} (no compatible manager)")
+                rows.append([pkg_name, f"[bold red]{reason}[/bold red]", "unavailable"])
+                plan_lines.append(f"unavailable: {pkg_name} ({reason})")
             else:
                 rows.append([pkg_name, "[bold red]❌ No compatible manager found[/bold red]"])
     
@@ -312,8 +402,9 @@ def install_packages(
 
     tty_ok, tty_error = require_tty_or_yes(assume_yes, dry_run=dry_run)
     if not tty_ok:
-        print_error(tty_error or "Non-interactive session requires --yes or --dry-run.")
-        return InstallRunResult(ok=False)
+        message = tty_error or "Non-interactive session requires --yes or --dry-run."
+        print_error(message)
+        return InstallRunResult(ok=False, message=message)
 
     # Detect current OS
     current_os = detect_os().lower()
@@ -337,15 +428,22 @@ def install_packages(
                 print_warning(f"This set targets: {', '.join(target_os_list)}")
                 print_warning(f"Your current OS is: {current_os.capitalize()}")
                 print_error("OS mismatch. Use --force to install anyway.")
-                return InstallRunResult(ok=False)
+                return InstallRunResult(
+                    ok=False,
+                    message=(
+                        f"OS mismatch: set targets {', '.join(target_os_list)}, "
+                        f"current OS is {current_os}. Use --force to install anyway."
+                    ),
+                )
             else:
                 print_warning(f"Installing set for {', '.join(target_os_list)} on {current_os.capitalize()} (--force enabled)")
     
     available_managers = detect_available_managers()
     
     if not available_managers:
-        print_error("No package managers detected on this system.")
-        return InstallRunResult(ok=False)
+        message = "No package managers detected on this system."
+        print_error(message)
+        return InstallRunResult(ok=False, message=message)
     
     # Build preference system
     preferred_managers_config = config.get("preferred_managers")
@@ -377,6 +475,13 @@ def install_packages(
     manager_names = [mgr.name for mgr in available_managers]
     print_info(f"Detected package managers: {', '.join(manager_names)}")
     
+    # A dry run resolves the same plan the summary table renders, so build it once.
+    plan = (
+        build_install_plan(config, available_managers, preferences)
+        if dry_run
+        else None
+    )
+
     # Show summary and get confirmation (if requested)
     if show_summary:
         confirmation = show_installation_summary(
@@ -386,18 +491,18 @@ def install_packages(
             assume_yes=assume_yes,
             dry_run=dry_run,
             config_source=config_source,
+            plan=plan,
         )
         if confirmation == "back":
             return InstallRunResult(ok=True, back=True)
-        if confirmation == "dry_run":
-            return InstallRunResult(ok=True)
-        elif not confirmation:
+        if confirmation != "dry_run" and not confirmation:
             print_info("Installation cancelled.")
             return InstallRunResult(ok=False, cancelled=True)
     
     if dry_run:
-        print_info("Dry-run only. No packages will be installed.")
-        return InstallRunResult(ok=True)
+        if not show_summary:
+            print_info("Dry-run only. No packages will be installed.")
+        return dry_run_result(plan)
     
     # Sudo: system PMs only. Flatpak is a first-class Linux PM but does not use sudo.
     sudo_managers = {"apt", "pacman", "yum", "snap"}
@@ -684,10 +789,30 @@ def reject_json_if_unsupported(ctx: click.Context, command_name: str) -> None:
     sys.exit(2)
 
 
-def emit_json_run_error(command: str, exit_code: int, code: str, message: str) -> None:
+def emit_json_run_error(
+    command: str,
+    exit_code: int,
+    code: str,
+    message: str,
+    data: Optional[dict] = None,
+) -> None:
     """Emit a JSON error envelope for install/apply, then exit."""
-    emit_error(command=command, exit_code=exit_code, code=code, message=message)
+    emit_error(
+        command=command, exit_code=exit_code, code=code, message=message, data=data
+    )
     sys.exit(exit_code)
+
+
+def require_managers_for_json(command: str) -> None:
+    """No detected manager is a diagnosable state, like it is for search."""
+    if detect_available_managers():
+        return
+    emit_json_run_error(
+        command,
+        1,
+        "no_managers",
+        "No package managers detected on this system.",
+    )
 
 
 def require_yes_for_json(command: str, assume_yes: bool, dry_run: bool) -> None:
@@ -783,16 +908,18 @@ def emit_json_run_result(
     apply_ok_exits: bool = False,
 ) -> None:
     """Emit the JSON envelope for a finished install/apply run, then exit."""
+    data = run_result_data(
+        dry_run=dry_run,
+        set_name=config.get("name") if config else None,
+        config_path=config_source,
+        result=result,
+    )
+
     if exit_code == 0 or (apply_ok_exits and exit_code == 2):
         emit_ok(
             command=command,
             exit_code=exit_code,
-            data=run_result_data(
-                dry_run=dry_run,
-                set_name=config.get("name") if config else None,
-                config_path=config_source,
-                result=result,
-            ),
+            data=data,
             apply_ok_exits=apply_ok_exits,
         )
         sys.exit(exit_code)
@@ -803,6 +930,7 @@ def emit_json_run_result(
             exit_code,
             "cancelled",
             f"{command} was cancelled before any package changed.",
+            data=data,
         )
 
     failed_names = [
@@ -815,12 +943,14 @@ def emit_json_run_result(
             f"{command} failed for {len(failed_names)} package(s): "
             f"{', '.join(failed_names)}"
         )
+    elif result.message:
+        message = f"{command} did not run: {result.message}"
     else:
         message = (
             f"{command} did not run; re-run without --json to see the reason "
-            "(for example OS mismatch or no package managers detected)."
+            "(stderr carries the human-readable diagnostics)."
         )
-    emit_json_run_error(command, exit_code, "install_failed", message)
+    emit_json_run_error(command, exit_code, "install_failed", message, data=data)
 
 
 @click.group(invoke_without_command=True)
@@ -1114,6 +1244,7 @@ def install(
 
     if json_mode:
         require_yes_for_json("install", assume_yes, dry_run)
+        require_managers_for_json("install")
 
     # Install packages
     result = install_packages(
@@ -1205,6 +1336,7 @@ def apply(
 
     if json_mode:
         require_yes_for_json("apply", assume_yes, dry_run)
+        require_managers_for_json("apply")
 
     result = install_packages(
         config,

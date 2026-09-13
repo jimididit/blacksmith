@@ -44,15 +44,23 @@ def envelope_ok(
 
 
 def envelope_error(
-    command: str, exit_code: int, code: str, message: str
+    command: str,
+    exit_code: int,
+    code: str,
+    message: str,
+    data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return {
+    envelope = {
         "schema_version": SCHEMA_VERSION,
         "command": command,
         "ok": False,
         "exit": int(exit_code),
         "error": {"code": code, "message": message},
     }
+    # Additive: install/apply attach outcomes so scripts can act on a partial run.
+    if data is not None:
+        envelope["data"] = data
+    return envelope
 
 
 def _dump(obj: Dict[str, Any]) -> None:
@@ -69,8 +77,15 @@ def emit_ok(
     _dump(envelope_ok(command, exit_code, data, apply_ok_exits=apply_ok_exits))
 
 
-def emit_error(*, command: str, exit_code: int, code: str, message: str) -> None:
-    _dump(envelope_error(command, exit_code, code, message))
+def emit_error(
+    *,
+    command: str,
+    exit_code: int,
+    code: str,
+    message: str,
+    data: Optional[Dict[str, Any]] = None,
+) -> None:
+    _dump(envelope_error(command, exit_code, code, message, data=data))
 
 
 def outcome_to_dict(outcome: Any) -> Dict[str, Any]:
