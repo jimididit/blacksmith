@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from blacksmith.utils.identifiers import validate_package_id
 from blacksmith.utils.ui import print_error
 
 # Valid OS values
@@ -83,12 +84,18 @@ def validate_config(config_data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         if not isinstance(package["managers"], dict):
             return False, f"Package '{package.get('name', 'unknown')}' field 'managers' must be a dictionary"
         
-        # Validate manager names in package managers dict
+        # Validate manager names and package IDs (argv-safe allowlist)
         for mgr_name, pkg_id in package["managers"].items():
             if mgr_name.lower() not in VALID_MANAGERS:
                 return False, f"Package '{package.get('name', 'unknown')}' has invalid manager '{mgr_name}'. Must be one of: {', '.join(VALID_MANAGERS)}"
             if not isinstance(pkg_id, str) or not pkg_id.strip():
                 return False, f"Package '{package.get('name', 'unknown')}' has empty or invalid package ID for manager '{mgr_name}'"
+            id_ok, id_error = validate_package_id(pkg_id)
+            if not id_ok:
+                return False, (
+                    f"Package '{package.get('name', 'unknown')}' has unsafe "
+                    f"package ID for manager '{mgr_name}': {id_error}"
+                )
     
     return True, None
 

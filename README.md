@@ -530,23 +530,25 @@ git push origin v0.1.1
 
 ## 🤝 Contributing
 
+**Do not push commits directly to `main`.** All changes go through a feature branch and pull request. `main` is branch-protected: PRs must pass the required **CI** check before merge.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
+
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ### Getting Started
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/blacksmith.git`
-3. Create a feature branch: `git checkout -b feature/AmazingFeature`
-4. Set up your development environment (see the [Development](#️-development) section above)
+1. Fork the repository (or clone if you have write access)
+2. Create a feature branch from `main`: `git checkout -b feat/short-description`
+3. Set up your development environment (see the [Development](#️-development) section above)
 
 ### Development Workflow
 
-1. Make your changes
+1. Make your changes on the feature branch
 2. Run tests locally (see [Testing](#testing) below)
-3. Ensure code quality checks pass (see [Code Quality](#code-quality) below)
-4. Commit your changes: `git commit -m 'Add some AmazingFeature'`
-5. Push to your fork: `git push origin feature/AmazingFeature`
-6. Open a Pull Request
+3. Push the branch and open a Pull Request into `main`
+4. Wait for the required **CI** status to turn green
+5. Merge only after CI is green
 
 ### Testing
 

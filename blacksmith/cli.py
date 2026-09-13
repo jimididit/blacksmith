@@ -153,10 +153,21 @@ def show_sets_menu():
 def show_installation_summary(
     config: dict,
     available_managers: list,
-    preferences: Optional[object] = None
+    preferences: Optional[object] = None,
+    assume_yes: bool = False,
+    dry_run: bool = False,
+    config_source: Optional[str] = None,
 ):
     """Show what will be installed before confirmation."""
     from blacksmith.package_managers.detector import find_manager_for_package
+
+    if config_source:
+        print_warning(
+            "Installing from a custom config file. Treat third-party YAML as untrusted "
+            "until you have reviewed every package ID below."
+        )
+        print_info(f"Config source: {config_source}")
+        console.print()
     
     packages = config.get("packages", [])
     managers_supported = config.get("managers_supported")
@@ -185,7 +196,12 @@ def show_installation_summary(
             rows.append([pkg_name, "[bold red]❌ No compatible manager found[/bold red]"])
     
     # Use Rich table for better formatting
-    table = Table(title=f"Installation Summary - {config.get('name', 'Unknown Set')}", show_header=True, header_style="bold #44FFD1")
+    title_suffix = " (dry-run)" if dry_run else ""
+    table = Table(
+        title=f"Installation Summary - {config.get('name', 'Unknown Set')}{title_suffix}",
+        show_header=True,
+        header_style="bold #44FFD1",
+    )
     table.add_column("Package", style="cyan", no_wrap=True)
     table.add_column("Manager", style="white")
     
@@ -198,6 +214,14 @@ def show_installation_summary(
     if not rows:
         print_warning("No packages to install.")
         return False
+
+    if dry_run:
+        print_info("Dry-run only. No packages will be installed.")
+        return "dry_run"
+
+    if assume_yes:
+        print_info("Proceeding without interactive confirmation (--yes).")
+        return True
     
     # Provide options: proceed, cancel, or go back
     choice = questionary.select(
@@ -223,7 +247,10 @@ def install_packages(
     skip_installed: bool = False,
     show_summary: bool = True,
     prefer_manager: Optional[str] = None,
-    force: bool = False
+    force: bool = False,
+    assume_yes: bool = False,
+    dry_run: bool = False,
+    config_source: Optional[str] = None,
 ):
     """Install packages from configuration.
     
@@ -233,8 +260,12 @@ def install_packages(
         show_summary: If True, show installation summary and prompt for confirmation
         prefer_manager: Optional manager name to prefer (overrides config preferences)
         force: If True, allow installation even if OS doesn't match target_os
+        assume_yes: If True, skip interactive confirmation
+        dry_run: If True, show plan and exit without installing
+        config_source: Optional path/label for custom config trust warning
     """
     from blacksmith.config.preferences import PreferredManagerOrder
+    from blacksmith.utils.identifiers import validate_package_id
     from blacksmith.utils.os_detector import detect_os
     
     # Detect current OS
@@ -301,16 +332,29 @@ def install_packages(
     
     # Show summary and get confirmation (if requested)
     if show_summary:
-        confirmation = show_installation_summary(config, available_managers, preferences)
+        confirmation = show_installation_summary(
+            config,
+            available_managers,
+            preferences,
+            assume_yes=assume_yes,
+            dry_run=dry_run,
+            config_source=config_source,
+        )
         if confirmation == "back":
             return "back"
+        if confirmation == "dry_run":
+            return True
         elif not confirmation:
             print_info("Installation cancelled.")
             return False
     
+    if dry_run:
+        print_info("Dry-run only. No packages will be installed.")
+        return True
+    
     # Check if any managers require sudo
     requires_sudo = any(
-        mgr.name in ['apt', 'pacman', 'yum', 'snap', 'flatpak']
+        mgr.name in ['apt', 'pacman', 'yum', 'snap']
         for mgr in available_managers
     )
     
@@ -353,6 +397,11 @@ def install_packages(
             continue
         
         mgr, pkg_id = manager_info
+        id_ok, id_error = validate_package_id(pkg_id)
+        if not id_ok:
+            print_error(f"{pkg_name}: refusing unsafe package ID for {mgr.name}: {id_error}")
+            not_found.append(pkg_name)
+            continue
         # Log which manager was chosen and why
         pkg_managers = pkg.get("managers", {})
         all_pkg_managers = list(pkg_managers.keys())
@@ -362,8 +411,8 @@ def install_packages(
         # Always check if installed
         if mgr.is_installed(pkg_id):
             # Package is installed - prompt user
-            if skip_installed:
-                # Old behavior: just skip
+            if skip_installed or assume_yes:
+                # Skip already-installed when non-interactive or --skip-installed
                 packages_to_skip.append(pkg_name)
                 print_info(f"⏭  Skipping {pkg_name} (already installed)")
             else:
@@ -574,7 +623,7 @@ def list():
             elif managers_supported:
                 mgr_info = f"{len(managers_supported)} manager(s)"
             else:
-                mgr_info = "—"
+                mgr_info = "-"
             
             rows.append([set_name, description, str(package_count), os_compat, mgr_info])
     
@@ -585,7 +634,8 @@ def list():
     )
     
     console.print()
-    print_info("Legend: 🪟 Windows | 🐧 Linux | 🍎 macOS | ✓ Compatible with your OS")
+    from blacksmith.utils.ui import os_legend_text
+    print_info(os_legend_text())
 
 
 @cli.command()
@@ -594,15 +644,20 @@ def list():
 @click.option("--skip-installed", "-s", is_flag=True, help="Skip already installed packages")
 @click.option("--prefer", "-p", "prefer_manager", help="Prefer specific package manager (overrides config)")
 @click.option("--force", is_flag=True, help="Force installation even if OS doesn't match target_os")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts (required for non-interactive custom --file installs)")
+@click.option("--dry-run", is_flag=True, help="Show what would be installed without making changes")
 def install(
     set_name: Optional[str],
     config_file: Optional[str],
     skip_installed: bool,
     prefer_manager: Optional[str],
-    force: bool
+    force: bool,
+    assume_yes: bool,
+    dry_run: bool,
 ):
     """Install tools from a pre-made set or custom config file."""
     config = None
+    config_source = None
     
     if config_file:
         # Load custom config
@@ -610,6 +665,7 @@ def install(
         if not config:
             print_error(f"Failed to load config file: {config_file}")
             sys.exit(1)
+        config_source = str(config_file)
     elif set_name:
         # Load pre-made set
         config = load_set(set_name)
@@ -633,7 +689,10 @@ def install(
         config,
         skip_installed=skip_installed,
         prefer_manager=prefer_manager,
-        force=force
+        force=force,
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        config_source=config_source,
     )
     sys.exit(0 if success else 1)
 
@@ -870,6 +929,13 @@ def search(query: Optional[str], manager: Optional[str], limit: int):
         if not query:
             print_info("Search cancelled.")
             return
+
+    from blacksmith.utils.identifiers import validate_search_query
+
+    query_ok, query_error = validate_search_query(query)
+    if not query_ok:
+        print_error(query_error or "Invalid search query")
+        return
     
     # Filter by manager if specified
     if manager:
@@ -958,8 +1024,8 @@ def create(advanced: bool):
         print_info("Advanced mode: Creating single-manager set")
         # In advanced mode, ask for single OS and single manager
         os_choices = [
-            questionary.Choice("🪟 Windows", "windows"),
-            questionary.Choice("🐧 Linux", "linux"),
+            questionary.Choice("Windows", "windows"),
+            questionary.Choice("Linux", "linux"),
         ]
         target_os_selection = questionary.select(
             "Target OS:",
@@ -994,9 +1060,9 @@ def create(advanced: bool):
         # Normal mode: cross-platform with multiple managers
         print_info("Select target operating system(s) for this set:")
         os_choices = [
-            questionary.Choice("🪟 Windows only", "windows"),
-            questionary.Choice("🐧 Linux only", "linux"),
-            questionary.Choice("🪟🐧 Windows and Linux (cross-platform)", "both"),
+            questionary.Choice("Windows only", "windows"),
+            questionary.Choice("Linux only", "linux"),
+            questionary.Choice("Windows and Linux (cross-platform)", "both"),
         ]
         
         target_os_selection = questionary.select(
@@ -1438,7 +1504,7 @@ rm -f "$SCRIPT_PATH"
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 f.write(script_content)
             # Make it executable
-            os.chmod(script_path, 0o755)
+            os.chmod(script_path, 0o700)
             return script_path
     
     
@@ -1563,7 +1629,7 @@ rm -f "$SCRIPT_PATH"
                         cleanup_script = os.path.join(tempfile.gettempdir(), f"blacksmith_venv_cleanup_{os.getpid()}.sh")
                         with open(cleanup_script, 'w', encoding='utf-8') as f:
                             f.write(script_content)
-                        os.chmod(cleanup_script, 0o755)
+                        os.chmod(cleanup_script, 0o700)
                         
                         # Launch cleanup script in background
                         subprocess.Popen(
@@ -1625,14 +1691,13 @@ rm -f "$SCRIPT_PATH"
     
     for cmd, method_name in uninstall_methods:
         try:
-            # On Windows, use shell=True for better command resolution
-            shell = os.name == 'nt'
+            # Always argv list + shell=False (avoid cmd.exe injection / quoting bugs)
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
-                shell=shell
+                shell=False,
             )
             
             if result.returncode == 0:
