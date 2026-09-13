@@ -181,3 +181,43 @@ def test_find_manager_without_preferences(mock_managers):
     assert mgr.name in ["apt", "winget"]
     assert pkg_id in ["git", "Git.Git"]
 
+
+@patch("blacksmith.cli.create_progress")
+@patch("blacksmith.cli.show_installation_summary", return_value=True)
+@patch("blacksmith.cli.detect_available_managers")
+@patch("blacksmith.cli.find_manager_for_package")
+@patch("blacksmith.cli.detect_os", return_value="linux")
+def test_install_packages_honors_prefer_via_finder(
+    _os, mock_find, mock_detect, _summary, mock_progress, monkeypatch
+):
+    """Thin X5 check: install path uses finder result (preference already applied)."""
+    from blacksmith.cli import install_packages
+
+    monkeypatch.setattr("blacksmith.utils.tty.stdin_is_tty", lambda: True)
+    apt = Mock()
+    apt.name = "apt"
+    apt.is_installed = Mock(return_value=False)
+    apt.install = Mock(return_value=True)
+    mock_detect.return_value = [apt]
+    mock_find.return_value = (apt, "git")
+
+    progress = Mock()
+    progress.__enter__ = Mock(return_value=progress)
+    progress.__exit__ = Mock(return_value=False)
+    progress.add_task = Mock(return_value=1)
+    progress.update = Mock()
+    mock_progress.return_value = progress
+
+    ok = install_packages(
+        {
+            "name": "t",
+            "packages": [{"name": "Git", "managers": {"apt": "git", "snap": "git"}}],
+        },
+        show_summary=True,
+        assume_yes=True,
+        prefer_manager="apt",
+    )
+    assert ok is True
+    mock_find.assert_called()
+    apt.install.assert_called_once_with(["git"])
+
