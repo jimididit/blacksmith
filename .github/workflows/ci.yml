@@ -326,7 +326,7 @@ jobs:
       - name: Generate release notes (if custom not found)
         if: steps.check_notes.outputs.use_custom == 'false'
         id: generate_notes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { data } = await github.rest.repos.generateReleaseNotes({
