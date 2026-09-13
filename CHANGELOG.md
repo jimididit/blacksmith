@@ -7,18 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-12
+
+Platform and docs release: Homebrew on macOS, trust docs, and README cleanup.
+
 ### Added
 
 - Homebrew (`brew`) package manager for macOS (formulas and casks)
 - `SECURITY.md` with vulnerability reporting and shared-set threat model
 - Manager subprocess mock tests for all package managers
 - Slim README with centered navigation
+- Single `CHANGELOG.md` (replaces per-version `release-notes/` files)
 
 ### Changed
 
 - macOS preferences default to `brew` only
 - `minimal` set includes `brew:` package IDs
 - Config validator allows `brew` as a manager name
+- Release workflow extracts GitHub Release body from `CHANGELOG.md`
 
 ## [0.3.0] - 2026-09-12
 
@@ -84,7 +90,8 @@ First public release.
 - `info` argument parsing; create defaults; skip-manager flow
 - Winget search Unicode and older-client parsing
 
-[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jimididit/blacksmith/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jimididit/blacksmith/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/jimididit/blacksmith/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/jimididit/blacksmith/compare/v0.2.1...v0.2.2
