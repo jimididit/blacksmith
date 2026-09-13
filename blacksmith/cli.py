@@ -13,6 +13,7 @@ from blacksmith import __version__
 from blacksmith.audit.log import record_audit
 from blacksmith.config.loader import load_custom_config, load_set, list_available_sets
 from blacksmith.config.validator import validate_and_report
+from blacksmith.json_out import JSON_COMMANDS, emit_error, is_json_mode
 from blacksmith.package_managers.detector import detect_available_managers, find_manager_for_package
 from blacksmith.package_managers.results import (
     InstallRunResult,
@@ -664,13 +665,46 @@ def record_self_uninstall_audit(
     )
 
 
+def reject_json_if_unsupported(ctx: click.Context, command_name: str) -> None:
+    """Exit with a stable JSON error when a command lacks JSON support."""
+    if not is_json_mode(ctx) or command_name in JSON_COMMANDS:
+        return
+    emit_error(
+        command=command_name,
+        exit_code=2,
+        code="json_unsupported",
+        message=f"JSON output is not supported for '{command_name}' in this version.",
+    )
+    sys.exit(2)
+
+
 @click.group(invoke_without_command=True)
+@click.option(
+    "--json",
+    "json_mode",
+    is_flag=True,
+    help="Emit machine-readable JSON on stdout",
+)
 @click.version_option(version=__version__, prog_name="Blacksmith")
 @click.pass_context
-def cli(ctx):
+def cli(ctx: click.Context, json_mode: bool):
     """Blacksmith - Cross-platform development tool installer."""
+    ctx.ensure_object(dict)
+    ctx.obj["json"] = json_mode
+
     # If no subcommand, show interactive menu
     if ctx.invoked_subcommand is None:
+        if json_mode:
+            emit_error(
+                command="interactive",
+                exit_code=2,
+                code="json_unsupported",
+                message=(
+                    "Interactive menu is not available with --json; "
+                    "pass a command such as list or install."
+                ),
+            )
+            sys.exit(2)
         while True:
             show_welcome()
             selected = show_sets_menu()
@@ -802,8 +836,10 @@ def list_sets():
     type=int,
     help="Show last N events",
 )
-def audit_cmd(last_n: int):
+@click.pass_context
+def audit_cmd(ctx: click.Context, last_n: int):
     """Show recent local audit log events."""
+    reject_json_if_unsupported(ctx, "audit")
     from blacksmith.audit.read import default_audit_log_path, load_events
 
     log_path = default_audit_log_path()
@@ -1056,8 +1092,10 @@ def apply(
               type=click.Choice(["winget", "choco", "chocolatey", "apt", "pacman", "scoop"], case_sensitive=False),
               help="Export format: winget, choco/chocolatey, apt, pacman, or scoop")
 @click.option("--output", "-o", "output_file", help="Output file path")
-def export(set_name: Optional[str], config_file: Optional[str], export_format: Optional[str], output_file: Optional[str]):
+@click.pass_context
+def export(ctx: click.Context, set_name: Optional[str], config_file: Optional[str], export_format: Optional[str], output_file: Optional[str]):
     """Export a set to native package manager format."""
+    reject_json_if_unsupported(ctx, "export")
     from blacksmith.config.loader import load_set, load_custom_config
     from blacksmith.export import (
         WingetExporter, ChocolateyExporter, AptExporter,
@@ -1247,8 +1285,10 @@ def info(set_name: Optional[str], config_file: Optional[str]):
 
 @cli.command()
 @click.argument("config_path", type=click.Path(exists=True))
-def validate(config_path: str):
+@click.pass_context
+def validate(ctx: click.Context, config_path: str):
     """Validate a configuration file."""
+    reject_json_if_unsupported(ctx, "validate")
     from blacksmith.config.parser import load_yaml
     
     try:
@@ -1379,8 +1419,10 @@ def search(query: Optional[str], manager: Optional[str], limit: int):
 
 @cli.command()
 @click.option("--advanced", is_flag=True, help="Advanced mode: single-manager sets only")
-def create(advanced: bool):
+@click.pass_context
+def create(ctx: click.Context, advanced: bool):
     """Interactively create a new tool set."""
+    reject_json_if_unsupported(ctx, "create")
     print_panel("Create New Set", "This will guide you through creating a custom tool set.")
     
     name = questionary.text("Set name:").ask()
@@ -1821,8 +1863,10 @@ def create(advanced: bool):
 @cli.command()
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
-def uninstall(yes, no_audit):
+@click.pass_context
+def uninstall(ctx: click.Context, yes, no_audit):
     """Uninstall Blacksmith itself."""
+    reject_json_if_unsupported(ctx, "uninstall")
     import os
     import shutil
     import subprocess
