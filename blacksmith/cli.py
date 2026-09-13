@@ -1633,6 +1633,9 @@ def uninstall(yes):
         remove_venv_now,
         schedule_delete_file,
         schedule_delete_venv,
+        schedule_pip_uninstall,
+        sibling_pip_uninstall_cmds,
+        try_unlock_windows_executable,
     )
     from blacksmith.utils.pipx import pipx_package_name, should_use_pipx_uninstall
     from blacksmith.utils.safe_paths import (
@@ -1743,8 +1746,18 @@ def uninstall(yes):
                 "pipx install detected but `pipx` is not on PATH; "
                 "falling back to pip methods (prefer: pipx uninstall jdi-blacksmith)."
             )
+
+    # Windows: rename running blacksmith.exe so pip can remove/replace it.
+    unlocked_backup = None
+    if os.name == "nt" and blacksmith_path:
+        unlocked_backup = try_unlock_windows_executable(blacksmith_path)
+        if unlocked_backup is not None:
+            print_info("Unlocked Windows entry point for uninstall (renamed temporarily).")
     
     uninstall_methods = []
+
+    for cmd in sibling_pip_uninstall_cmds(blacksmith_path):
+        uninstall_methods.append((f"sibling pip ({cmd[0]})", cmd))
     
     uninstall_methods.append((
         "pip uninstall jdi-blacksmith",
@@ -1764,10 +1777,14 @@ def uninstall(yes):
     if blacksmith_path:
         try:
             blacksmith_file = Path(blacksmith_path)
-            if blacksmith_file.exists():
+            # After unlock rename, original path may be gone; use backup parent Scripts
+            probe = blacksmith_file if blacksmith_file.exists() else (
+                unlocked_backup if unlocked_backup is not None else blacksmith_file
+            )
+            if probe is not None and Path(probe).exists():
                 shebang_python = None
                 try:
-                    with open(blacksmith_file, "r", encoding="utf-8", errors="ignore") as f:
+                    with open(probe, "r", encoding="utf-8", errors="ignore") as f:
                         first_line = f.readline().strip()
                         if first_line.startswith("#!"):
                             shebang_python = first_line[2:].strip()
@@ -1782,7 +1799,7 @@ def uninstall(yes):
                         [shebang_python, "-m", "pip", "uninstall", "jdi-blacksmith", "-y"]
                     ))
                 
-                scripts_dir = blacksmith_file.parent
+                scripts_dir = Path(probe).parent
                 if scripts_dir.name in ("Scripts", "bin"):
                     venv_python = scripts_dir / ("python.exe" if os.name == "nt" else "python")
                     if venv_python.exists():
@@ -1792,7 +1809,8 @@ def uninstall(yes):
                         ))
         except Exception as e:
             logger.debug(f"Could not analyze blacksmith executable: {e}")
-    
+
+    last_error = None
     for method_name, cmd in uninstall_methods:
         try:
             console.print(f"[dim]Trying: {method_name}...[/dim]")
@@ -1805,6 +1823,11 @@ def uninstall(yes):
             
             if result.returncode == 0:
                 console.print(f"[green][OK][/green] Successfully uninstalled via {method_name}")
+                if unlocked_backup is not None and unlocked_backup.exists():
+                    try:
+                        unlocked_backup.unlink()
+                    except OSError:
+                        schedule_delete_file(unlocked_backup)
                 
                 # Clean up known Blacksmith venv only after path safety checks.
                 venv_path = expected_venv_path()
@@ -1830,12 +1853,14 @@ def uninstall(yes):
                             print_info(f"You may need to manually delete: {venv_path}")
                 
                 # Remove executable only if it resolves under an approved parent.
-                if blacksmith_path:
+                for candidate in (blacksmith_path, str(unlocked_backup) if unlocked_backup else None):
+                    if not candidate:
+                        continue
                     try:
-                        blacksmith_file = assert_safe_blacksmith_executable(blacksmith_path)
+                        blacksmith_file = assert_safe_blacksmith_executable(candidate)
                     except ValueError as exc:
                         print_warning(f"Skipping executable cleanup: {exc}")
-                        blacksmith_file = None
+                        continue
 
                     if blacksmith_file is not None and blacksmith_file.exists():
                         console.print(f"[dim]Removing executable: {blacksmith_file}[/dim]")
@@ -1858,6 +1883,7 @@ def uninstall(yes):
             else:
                 error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
                 if error_msg:
+                    last_error = error_msg
                     logger.debug(f"Method {method_name} failed: {error_msg[:200]}")
                 continue
                 
@@ -1867,8 +1893,40 @@ def uninstall(yes):
         except Exception as e:
             logger.debug(f"Uninstall method {method_name} raised exception: {e}")
             continue
+
+    # Last resort on Windows: finish uninstall after this process exits (file lock).
+    deferred_cmd = None
+    sibling_cmds = sibling_pip_uninstall_cmds(
+        unlocked_backup or blacksmith_path
+    )
+    if sibling_cmds:
+        deferred_cmd = sibling_cmds[0]
+    else:
+        deferred_cmd = [python_exe, "-m", "pip", "uninstall", "jdi-blacksmith", "-y"]
+    if schedule_pip_uninstall(deferred_cmd):
+        console.print(
+            "[yellow]In-process uninstall failed (often because blacksmith.exe is locked).[/yellow]"
+        )
+        console.print(
+            "[green]Scheduled pip uninstall to run after this process exits.[/green]"
+        )
+        console.print(
+            "[dim]Close this terminal or wait a few seconds, then confirm with "
+            "`blacksmith --version` (should be missing).[/dim]"
+        )
+        return
+
+    if unlocked_backup is not None and unlocked_backup.exists() and blacksmith_path:
+        # Restore entry point if we renamed but could not uninstall
+        try:
+            if not Path(blacksmith_path).exists():
+                unlocked_backup.rename(blacksmith_path)
+        except OSError:
+            pass
     
     print_error("Could not automatically uninstall Blacksmith.")
+    if last_error:
+        print_info(f"Last pip error: {last_error[:300]}")
     print_info("You may need to manually remove it:")
     print_info(f"  - Remove the command: {blacksmith_path}")
     print_info("  - If installed with pipx: pipx uninstall jdi-blacksmith")
@@ -1881,7 +1939,7 @@ def uninstall(yes):
         print_info("\nTroubleshooting:")
         print_info(f"  - Python executable: {python_exe}")
         print_info(f"  - Blacksmith path: {blacksmith_path}")
-        print_info("  - Try running the pip or pipx command manually to see the error")
+        print_info("  - Try running the pip or pipx command from a new terminal (not via blacksmith uninstall)")
 
 
 
