@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Global `--json` for machine-readable output on `list`, `info`, `search`, `install`, and `apply`
+- Stable JSON envelope (`schema_version` 1): `command`, `ok`, `exit`, and either `data` or `error`
+- Unsupported commands and the bare interactive menu fail closed with `json_unsupported` (exit 2)
+- Install/apply JSON payloads include per-package `outcomes` and `summary`; failure envelopes may also include `data` for partial runs
+- Apply exit 2 reports `ok: true` in the JSON envelope (changed, no failures)
 - Local install audit log (`audit.jsonl`): `blacksmith audit [--last N]`, `--no-audit`, `BLACKSMITH_NO_AUDIT`
 - `--require-signature` for `install --file` / `apply --file` (minisign CLI verify)
 - Trusted keys: packaged `blacksmith/keys/*.pub`, user `trusted_keys/`, optional `--pubkey`
