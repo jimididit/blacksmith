@@ -165,13 +165,17 @@ def sibling_pip_uninstall_cmds(
     return cmds
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
 def try_unlock_windows_executable(path: Path | str) -> Optional[Path]:
     """
     Rename a locked Windows .exe so pip can replace/remove it.
 
     Returns the backup path when rename succeeds, else None.
     """
-    if os.name != "nt":
+    if not _is_windows():
         return None
     target = Path(path).expanduser().resolve()
     if not target.is_file():

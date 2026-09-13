@@ -29,7 +29,9 @@ def test_sibling_pip_uninstall_cmds_empty_without_path():
 
 
 def test_try_unlock_windows_executable_renames(tmp_path, monkeypatch):
-    monkeypatch.setattr("blacksmith.utils.deferred_delete.os.name", "nt")
+    monkeypatch.setattr(
+        "blacksmith.utils.deferred_delete._is_windows", lambda: True
+    )
     exe = tmp_path / "blacksmith.exe"
     exe.write_bytes(b"mz")
     backup = try_unlock_windows_executable(exe)
@@ -40,7 +42,9 @@ def test_try_unlock_windows_executable_renames(tmp_path, monkeypatch):
 
 
 def test_try_unlock_noop_on_posix(tmp_path, monkeypatch):
-    monkeypatch.setattr("blacksmith.utils.deferred_delete.os.name", "posix")
+    monkeypatch.setattr(
+        "blacksmith.utils.deferred_delete._is_windows", lambda: False
+    )
     exe = tmp_path / "blacksmith"
     exe.write_text("x", encoding="utf-8")
     assert try_unlock_windows_executable(exe) is None
