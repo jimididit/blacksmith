@@ -10,9 +10,15 @@ from rich.console import Console
 from rich.table import Table
 
 from blacksmith import __version__
+from blacksmith.audit.log import record_audit
 from blacksmith.config.loader import load_custom_config, load_set, list_available_sets
 from blacksmith.config.validator import validate_and_report
 from blacksmith.package_managers.detector import detect_available_managers, find_manager_for_package
+from blacksmith.package_managers.results import (
+    InstallRunResult,
+    PackageOutcome,
+    PackageStatus,
+)
 from blacksmith.utils.logger import setup_logger
 from blacksmith.utils.os_detector import detect_os
 from blacksmith.utils.ui import (
@@ -604,6 +610,59 @@ def install_packages(
     )
 
 
+def _record_audit_fail_open(**kwargs) -> None:
+    """Audit writes must never change the exit code of a mutate command."""
+    try:
+        record_audit(warn=print_warning, **kwargs)
+    except Exception as exc:
+        print_warning(f"Audit log write failed: {exc}")
+
+
+def maybe_record_install_audit(
+    *,
+    command: str,
+    result: InstallRunResult,
+    exit_code: int,
+    config: Optional[dict],
+    config_source: Optional[str],
+    dry_run: bool,
+    no_audit: bool,
+) -> None:
+    """Append audit lines for a finished install/apply run."""
+    _record_audit_fail_open(
+        command=command,
+        outcomes=result.outcomes,
+        exit_code=exit_code,
+        set_name=config.get("name") if config else None,
+        config_path=config_source,
+        dry_run=dry_run,
+        no_audit=no_audit,
+    )
+
+
+def record_self_uninstall_audit(
+    *,
+    manager: str,
+    status: PackageStatus,
+    exit_code: int,
+    no_audit: bool,
+) -> None:
+    """Append audit lines for an attempted self-uninstall."""
+    _record_audit_fail_open(
+        command="uninstall",
+        outcomes=[
+            PackageOutcome(
+                "jdi-blacksmith",
+                "jdi-blacksmith",
+                manager,
+                "uninstall",
+                status,
+            )
+        ],
+        exit_code=exit_code,
+        no_audit=no_audit,
+    )
+
 
 @click.group(invoke_without_command=True)
 @click.version_option(version=__version__, prog_name="Blacksmith")
@@ -636,7 +695,17 @@ def cli(ctx):
             elif confirmation:
                 # User confirmed, proceed with installation (skip summary since we already showed it)
                 result = install_packages(config, show_summary=False, prefer_manager=None, force=False)
-                
+
+                maybe_record_install_audit(
+                    command="install",
+                    result=result,
+                    exit_code=result.exit_code_install(),
+                    config=config,
+                    config_source=None,
+                    dry_run=False,
+                    no_audit=False,
+                )
+
                 # Handle back option from install_packages
                 if result.back:
                     continue
@@ -793,6 +862,7 @@ def audit_cmd(last_n: int):
 @click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file (fail closed)")
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
+@click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 def install(
     set_name: Optional[str],
     config_file: Optional[str],
@@ -805,6 +875,7 @@ def install(
     require_signature: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
+    no_audit: bool,
 ):
     """Install tools from a pre-made set or custom config file."""
     from pathlib import Path
@@ -866,7 +937,17 @@ def install(
         config_source=config_source,
         fail_fast=fail_fast,
     )
-    sys.exit(result.exit_code_install())
+    exit_code = result.exit_code_install()
+    maybe_record_install_audit(
+        command="install",
+        result=result,
+        exit_code=exit_code,
+        config=config,
+        config_source=config_source,
+        dry_run=dry_run,
+        no_audit=no_audit,
+    )
+    sys.exit(exit_code)
 
 
 @cli.command()
@@ -880,6 +961,7 @@ def install(
 @click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file (fail closed)")
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
+@click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 def apply(
     set_name: Optional[str],
     config_file: Optional[str],
@@ -891,6 +973,7 @@ def apply(
     require_signature: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
+    no_audit: bool,
 ):
     """Ensure a set matches desired state (idempotent).
 
@@ -953,7 +1036,17 @@ def apply(
         fail_fast=fail_fast,
         apply_mode=True,
     )
-    sys.exit(result.exit_code_apply())
+    exit_code = result.exit_code_apply()
+    maybe_record_install_audit(
+        command="apply",
+        result=result,
+        exit_code=exit_code,
+        config=config,
+        config_source=config_source,
+        dry_run=dry_run,
+        no_audit=no_audit,
+    )
+    sys.exit(exit_code)
 
 
 @cli.command()
@@ -1727,7 +1820,8 @@ def create(advanced: bool):
 
 @cli.command()
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def uninstall(yes):
+@click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
+def uninstall(yes, no_audit):
     """Uninstall Blacksmith itself."""
     import os
     import shutil
@@ -1832,6 +1926,12 @@ def uninstall(yes):
                     console.print(
                         "[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]"
                     )
+                    record_self_uninstall_audit(
+                        manager="pipx",
+                        status=PackageStatus.OK,
+                        exit_code=0,
+                        no_audit=no_audit,
+                    )
                     return
                 err = (result.stderr or result.stdout or "").strip()
                 if err:
@@ -1860,6 +1960,12 @@ def uninstall(yes):
         if last_pipx_error:
             print_info(f"Last pipx error: {last_pipx_error[:300]}")
         print_info("Run manually: pipx uninstall jdi-blacksmith")
+        record_self_uninstall_audit(
+            manager="pipx",
+            status=PackageStatus.FAILED,
+            exit_code=1,
+            no_audit=no_audit,
+        )
         sys.exit(1)
 
     # Windows: rename running blacksmith.exe so pip can remove/replace it.
@@ -1994,6 +2100,12 @@ def uninstall(yes):
                 
                 console.print("\n[bold green]Blacksmith has been uninstalled.[/bold green]")
                 console.print("[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]")
+                record_self_uninstall_audit(
+                    manager="pip",
+                    status=PackageStatus.OK,
+                    exit_code=0,
+                    no_audit=no_audit,
+                )
                 return
             else:
                 error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
@@ -2055,6 +2167,13 @@ def uninstall(yes):
         print_info(f"  - Python executable: {python_exe}")
         print_info(f"  - Blacksmith path: {blacksmith_path}")
         print_info("  - Try running the pip or pipx command from a new terminal (not via blacksmith uninstall)")
+
+    record_self_uninstall_audit(
+        manager="pip",
+        status=PackageStatus.FAILED,
+        exit_code=0,
+        no_audit=no_audit,
+    )
 
 
 
