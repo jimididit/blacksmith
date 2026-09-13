@@ -248,6 +248,8 @@ blacksmith search git --manager choco    # Alias for chocolatey
 blacksmith search python --limit 5
 ```
 
+> **Note:** Snap and Flatpak support **install**, but `blacksmith search` does not query them yet. Discover IDs via another manager or upstream docs, then put them in your set YAML.
+
 **Features:**
 
 - **Real-time results**: Queries each package manager directly for up-to-date results
@@ -313,7 +315,14 @@ blacksmith install development --prefer winget
 
 # Force installation even if OS doesn't match set's target_os
 blacksmith install development --force
+
+# Stop after the first install/update failure (default is best-effort continue)
+blacksmith install development --fail-fast
 ```
+
+**Install policy:** By default Blacksmith continues after a package failure (best effort; no rollback). Use `--fail-fast` to stop immediately. Each package is installed individually so success/failure counts match reality.
+
+**Privileges:** On Linux, `apt` / `pacman` / `yum|dnf` / `snap` may prompt for sudo. **Flatpak** is a supported Linux manager and does not use that sudo path.
 
 ### Uninstall Blacksmith
 
