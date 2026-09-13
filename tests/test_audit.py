@@ -477,16 +477,45 @@ def test_uninstall_no_audit_flag_forwarded(
 @patch("blacksmith.utils.pipx.should_use_pipx_uninstall", return_value=True)
 @patch("blacksmith.utils.pipx.pipx_package_name", return_value="jdi-blacksmith")
 @patch("blacksmith.utils.pipx.pipx_uninstall_commands", return_value=PIPX_CMDS)
-def test_uninstall_deferred_schedule_does_not_record_audit(
+def test_uninstall_deferred_schedule_records_failed_audit(
     _cmds, _pkg, _should, _which, _run, _schedule, _confirm, mocked
 ):
-    """Outcome is unknown until after exit, so no ok/failed line is invented."""
+    """In-process uninstall failed, so the attempt is recorded as failed."""
     runner = CliRunner()
 
     invoked = runner.invoke(cli, ["uninstall", "--yes"])
 
     assert invoked.exit_code == 0, invoked.output
-    mocked.assert_not_called()
+    kwargs = mocked.call_args.kwargs
+    assert kwargs["command"] == "uninstall"
+    outcome = kwargs["outcomes"][0]
+    assert outcome.manager == "pipx"
+    assert outcome.action == "uninstall"
+    assert outcome.status == PackageStatus.FAILED
+    assert kwargs["exit_code"] == 0
+
+
+@patch("blacksmith.cli.record_audit")
+@patch("rich.prompt.Confirm.ask", return_value=True)
+@patch("blacksmith.utils.deferred_delete.schedule_pip_uninstall", return_value=True)
+@patch("subprocess.run", return_value=Mock(returncode=1, stdout="", stderr="locked"))
+@patch("shutil.which", return_value="/usr/bin/blacksmith")
+@patch("blacksmith.utils.pipx.should_use_pipx_uninstall", return_value=False)
+def test_uninstall_pip_deferred_schedule_records_failed_audit(
+    _should, _which, _run, _schedule, _confirm, mocked
+):
+    """Deferred pip retry still records the failed in-process attempt."""
+    runner = CliRunner()
+
+    invoked = runner.invoke(cli, ["uninstall", "--yes"])
+
+    assert invoked.exit_code == 0, invoked.output
+    kwargs = mocked.call_args.kwargs
+    outcome = kwargs["outcomes"][0]
+    assert outcome.manager == "pip"
+    assert outcome.action == "uninstall"
+    assert outcome.status == PackageStatus.FAILED
+    assert kwargs["exit_code"] == 0
 
 
 def test_uninstall_cancel_does_not_record_audit():
@@ -509,6 +538,10 @@ def test_uninstall_records_audit_on_pip_success():
         "subprocess.run", return_value=Mock(returncode=0, stdout="", stderr="")
     ), patch(
         "blacksmith.utils.safe_paths.expected_venv_path", return_value=Path("/nope/venv")
+    ), patch(
+        "blacksmith.utils.deferred_delete.remove_venv_now"
+    ), patch(
+        "blacksmith.utils.deferred_delete.remove_file_now"
     ), patch(
         "blacksmith.cli.record_audit"
     ) as mocked:

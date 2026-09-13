@@ -36,7 +36,12 @@ def test_uninstall_uses_pipx_when_detected(
 @patch("subprocess.run")
 @patch("shutil.which")
 @patch("blacksmith.utils.pipx.should_use_pipx_uninstall", return_value=False)
-def test_uninstall_skips_pipx_when_not_detected(_should, mock_which, mock_run, _confirm):
+@patch("blacksmith.utils.deferred_delete.remove_file_now")
+@patch("blacksmith.utils.deferred_delete.remove_venv_now")
+@patch("blacksmith.utils.deferred_delete.schedule_pip_uninstall", return_value=False)
+def test_uninstall_skips_pipx_when_not_detected(
+    _schedule, _rm_venv, _rm_file, _should, mock_which, mock_run, _confirm
+):
     mock_which.side_effect = lambda name: (
         "/usr/bin/blacksmith" if name == "blacksmith" else None
     )

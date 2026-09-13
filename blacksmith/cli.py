@@ -299,7 +299,6 @@ def install_packages(
         apply_mode: If True, ensure-state (skip installed, verify after install)
     """
     from blacksmith.config.preferences import PreferredManagerOrder
-    from blacksmith.package_managers.results import InstallRunResult, PackageOutcome, PackageStatus
     from blacksmith.utils.identifiers import validate_package_id
     from blacksmith.utils.os_detector import detect_os
     from blacksmith.utils.tty import require_tty_or_yes
@@ -1954,6 +1953,12 @@ def uninstall(yes, no_audit):
                     "[dim]Wait a few seconds, then confirm with `blacksmith --version` "
                     "or run: pipx uninstall jdi-blacksmith[/dim]"
                 )
+                record_self_uninstall_audit(
+                    manager="pipx",
+                    status=PackageStatus.FAILED,
+                    exit_code=0,
+                    no_audit=no_audit,
+                )
                 return
 
         print_error("pipx install detected but automatic pipx uninstall failed.")
@@ -2140,6 +2145,12 @@ def uninstall(yes, no_audit):
         console.print(
             "[dim]Close this terminal or wait a few seconds, then confirm with "
             "`blacksmith --version` (should be missing).[/dim]"
+        )
+        record_self_uninstall_audit(
+            manager="pip",
+            status=PackageStatus.FAILED,
+            exit_code=0,
+            no_audit=no_audit,
         )
         return
 
