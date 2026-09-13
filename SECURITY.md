@@ -21,7 +21,7 @@ Blacksmith installs software by invoking local package managers (`apt`, `winget`
 |--------|------------|--------------------|
 | Built-in sets | Schema validation; argv allowlist; managers run with `shell=False` | Upstream packages are benign, correctly named, or version-pinned |
 | Your own YAML | Same technical checks | Same - you own the IDs you write |
-| Third-party / shared `--file` YAML | Untrusted-source warning; non-interactive use requires `--yes` or `--dry-run`; allowlist blocks shell metacharacters and leading `-` | Cryptographic authenticity (no signatures yet); live "does this package exist?" on every install; rollback after partial failure |
+| Third-party / shared `--file` YAML | Untrusted-source warning; non-interactive use requires `--yes` or `--dry-run`; allowlist blocks shell metacharacters and leading `-`; optional `--require-signature` verifies a detached minisign signature against bundled/user/`--pubkey` keys | Cryptographic authenticity unless `--require-signature` succeeds; live "does this package exist?" on every install; rollback after partial failure |
 
 A valid-looking package ID still installs if the manager resolves it. Sharing a set shares a list of package-manager operands, not a verified supply chain.
 
