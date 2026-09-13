@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-13
+
+Patch release: uninstall reliability for pipx and Windows, plus the new `apply` command.
+
 ### Added
 
 - `blacksmith apply`: idempotent ensure-state (skip installed, post-install verify)
@@ -19,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - README recommends `pipx install jdi-blacksmith` as the primary install path
 - `uninstall` requires `--yes` without a TTY
+
+### Fixed
+
+- `uninstall` `NameError: Confirm is not defined` on PyPI 0.4.0 (blocked all uninstalls)
 
 ## [0.4.0] - 2026-09-12
 
@@ -103,7 +111,8 @@ First public release.
 - `info` argument parsing; create defaults; skip-manager flow
 - Winget search Unicode and older-client parsing
 
-[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/jimididit/blacksmith/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jimididit/blacksmith/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jimididit/blacksmith/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/jimididit/blacksmith/compare/v0.2.2...v0.2.3
