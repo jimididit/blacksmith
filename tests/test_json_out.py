@@ -1,3 +1,4 @@
+import inspect
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -53,6 +54,20 @@ def test_run_result_data_serializes_outcomes():
     assert data["outcomes"][1]["status"] == "skipped"
 
 
+_CLICK_MIXES_STDERR = "mix_stderr" in inspect.signature(CliRunner).parameters
+
+
+def _runner(**kwargs):
+    """CliRunner that keeps stdout and stderr apart on every supported click.
+
+    click < 8.2 folds stderr into stdout by default, which splices Rich log
+    lines into the JSON payload instead of exercising the real streams.
+    """
+    if _CLICK_MIXES_STDERR:
+        kwargs.setdefault("mix_stderr", False)
+    return CliRunner(**kwargs)
+
+
 def _parse_cli_json(result):
     """stdout must be exactly one JSON object; diagnostics belong on stderr."""
     return json.loads(result.stdout.strip())
@@ -86,7 +101,7 @@ def _detected_managers():
     ],
 )
 def test_json_unsupported_commands_fail_closed(command, args):
-    result = CliRunner().invoke(cli, ["--json", command, *args])
+    result = _runner().invoke(cli, ["--json", command, *args])
 
     assert result.exit_code == 2
     body = _parse_cli_json(result)
@@ -100,7 +115,7 @@ def test_json_validate_is_unsupported(tmp_path):
     config = tmp_path / "set.yaml"
     config.write_text("name: example\npackages: []\n", encoding="utf-8")
 
-    result = CliRunner().invoke(cli, ["--json", "validate", str(config)])
+    result = _runner().invoke(cli, ["--json", "validate", str(config)])
 
     assert result.exit_code == 2
     body = _parse_cli_json(result)
@@ -109,7 +124,7 @@ def test_json_validate_is_unsupported(tmp_path):
 
 
 def test_json_bare_cli_no_interactive():
-    result = CliRunner().invoke(cli, ["--json"])
+    result = _runner().invoke(cli, ["--json"])
 
     assert result.exit_code == 2
     body = _parse_cli_json(result)
@@ -119,7 +134,7 @@ def test_json_bare_cli_no_interactive():
 
 
 def test_json_list_includes_minimal():
-    result = CliRunner().invoke(cli, ["--json", "list"])
+    result = _runner().invoke(cli, ["--json", "list"])
 
     assert result.exit_code == 0
     body = _parse_cli_json(result)
@@ -135,7 +150,7 @@ def test_json_list_includes_minimal():
 
 
 def test_json_list_stdout_is_single_json_object():
-    result = CliRunner().invoke(cli, ["--json", "list"])
+    result = _runner().invoke(cli, ["--json", "list"])
 
     assert result.exit_code == 0
     body = json.loads(result.output.strip())
@@ -143,7 +158,7 @@ def test_json_list_stdout_is_single_json_object():
 
 
 def test_json_info_minimal_has_packages():
-    result = CliRunner().invoke(cli, ["--json", "info", "minimal"])
+    result = _runner().invoke(cli, ["--json", "info", "minimal"])
 
     assert result.exit_code == 0
     body = _parse_cli_json(result)
@@ -155,21 +170,21 @@ def test_json_info_minimal_has_packages():
 
 
 def test_json_info_needs_args():
-    result = CliRunner().invoke(cli, ["--json", "info"])
+    result = _runner().invoke(cli, ["--json", "info"])
 
     assert result.exit_code == 2
     assert _parse_cli_json(result)["error"]["code"] == "needs_args"
 
 
 def test_json_search_needs_query():
-    result = CliRunner().invoke(cli, ["--json", "search"])
+    result = _runner().invoke(cli, ["--json", "search"])
 
     assert result.exit_code == 2
     assert _parse_cli_json(result)["error"]["code"] == "needs_args"
 
 
 def test_json_search_invalid_query():
-    result = CliRunner().invoke(cli, ["--json", "search", ";rm -rf"])
+    result = _runner().invoke(cli, ["--json", "search", ";rm -rf"])
 
     assert result.exit_code != 0
     assert _parse_cli_json(result)["error"]["code"] == "invalid_query"
@@ -187,7 +202,7 @@ def test_json_search_results_mocked():
     with patch(
         "blacksmith.cli.detect_available_managers", return_value=[FakeManager()]
     ):
-        result = CliRunner().invoke(cli, ["--json", "search", "git", "--limit", "5"])
+        result = _runner().invoke(cli, ["--json", "search", "git", "--limit", "5"])
 
     assert result.exit_code == 0
     body = json.loads(result.output.strip())
@@ -214,7 +229,7 @@ def test_json_search_empty_results_are_success():
     with patch(
         "blacksmith.cli.detect_available_managers", return_value=[FakeManager()]
     ):
-        result = CliRunner().invoke(cli, ["--json", "search", "unknown"])
+        result = _runner().invoke(cli, ["--json", "search", "unknown"])
 
     assert result.exit_code == 0
     body = json.loads(result.output.strip())
@@ -224,7 +239,7 @@ def test_json_search_empty_results_are_success():
 
 def test_json_search_no_managers():
     with patch("blacksmith.cli.detect_available_managers", return_value=[]):
-        result = CliRunner().invoke(cli, ["--json", "search", "git"])
+        result = _runner().invoke(cli, ["--json", "search", "git"])
 
     assert result.exit_code == 1
     assert _parse_cli_json(result)["error"]["code"] == "no_managers"
@@ -253,7 +268,7 @@ def _changed_result():
 @pytest.mark.parametrize("command", ["install", "apply"])
 def test_json_mutate_needs_args(command):
     with patch("blacksmith.cli.install_packages") as mock_install:
-        result = CliRunner().invoke(cli, ["--json", command])
+        result = _runner().invoke(cli, ["--json", command])
 
     assert result.exit_code == 2
     body = _parse_cli_json(result)
@@ -266,7 +281,7 @@ def test_json_mutate_needs_args(command):
 @pytest.mark.parametrize("command", ["install", "apply"])
 def test_json_mutate_requires_yes(command):
     with patch("blacksmith.cli.install_packages") as mock_install:
-        result = CliRunner().invoke(cli, ["--json", command, "minimal"])
+        result = _runner().invoke(cli, ["--json", command, "minimal"])
 
     assert result.exit_code == 2
     body = _parse_cli_json(result)
@@ -283,7 +298,7 @@ def test_json_install_dry_run_mocked():
     ), patch(
         "blacksmith.cli.record_audit"
     ) as mock_audit:
-        result = CliRunner().invoke(
+        result = _runner().invoke(
             cli, ["--json", "install", "minimal", "--yes", "--dry-run"]
         )
 
@@ -311,7 +326,7 @@ def test_json_install_stdout_is_single_json_object():
     with patch("blacksmith.cli.install_packages", side_effect=noisy_install), patch(
         "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
     ), patch("blacksmith.cli.record_audit"):
-        result = CliRunner().invoke(cli, ["--json", "install", "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", "install", "minimal", "--yes"])
 
     assert result.exit_code == 0
     body = json.loads(result.output.strip())
@@ -319,7 +334,7 @@ def test_json_install_stdout_is_single_json_object():
 
 
 def test_human_mode_still_prints_after_json_run():
-    runner = CliRunner()
+    runner = _runner()
     json_result = runner.invoke(cli, ["--json", "list"])
     human_result = runner.invoke(cli, ["list"])
 
@@ -329,13 +344,31 @@ def test_human_mode_still_prints_after_json_run():
 
 
 def test_json_install_set_not_found():
-    result = CliRunner().invoke(cli, ["--json", "install", "does-not-exist", "--yes"])
+    result = _runner().invoke(cli, ["--json", "install", "does-not-exist", "--yes"])
 
     assert result.exit_code == 1
     # Loader warnings must not pollute the payload stream.
     body = json.loads(result.stdout.strip())
     assert body["ok"] is False
     assert body["error"]["code"] == "not_found"
+    assert "WARNING" in result.stderr
+
+
+def test_json_loader_warning_keeps_stdout_pure(capsys):
+    """Real streams, no CliRunner: a loader warning must never reach stdout."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(
+            ["--json", "install", "does-not-exist", "--yes"],
+            prog_name="blacksmith",
+        )
+
+    captured = capsys.readouterr()
+    assert excinfo.value.code == 1
+    body = json.loads(captured.out.strip())
+    assert body["error"]["code"] == "not_found"
+    assert "WARNING" not in captured.out
+    assert "WARNING" in captured.err
+    assert "not found" in captured.err
 
 
 def test_logger_output_goes_to_stderr():
@@ -351,7 +384,7 @@ def test_json_install_invalid_config(tmp_path):
     config.write_text("name: broken\n", encoding="utf-8")
 
     with patch("blacksmith.cli.load_custom_config", return_value=None):
-        result = CliRunner().invoke(
+        result = _runner().invoke(
             cli, ["--json", "install", "--file", str(config), "--yes"]
         )
 
@@ -370,7 +403,7 @@ def test_json_install_failed_run():
     with patch("blacksmith.cli.install_packages", return_value=failed), patch(
         "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
     ), patch("blacksmith.cli.record_audit"):
-        result = CliRunner().invoke(cli, ["--json", "install", "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", "install", "minimal", "--yes"])
 
     assert result.exit_code == 1
     body = _parse_cli_json(result)
@@ -387,7 +420,7 @@ def test_json_install_cancelled_run():
     with patch("blacksmith.cli.install_packages", return_value=cancelled), patch(
         "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
     ), patch("blacksmith.cli.record_audit"):
-        result = CliRunner().invoke(cli, ["--json", "install", "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", "install", "minimal", "--yes"])
 
     assert result.exit_code == 1
     assert _parse_cli_json(result)["error"]["code"] == "cancelled"
@@ -401,7 +434,7 @@ def test_json_apply_exit_2_ok_true():
     ), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["--json", "apply", "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", "apply", "minimal", "--yes"])
 
     assert result.exit_code == 2
     body = _parse_cli_json(result)
@@ -418,7 +451,7 @@ def test_json_apply_already_compliant_exit_0():
     ), patch("blacksmith.cli.load_set", return_value=MINIMAL_CONFIG), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["--json", "apply", "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", "apply", "minimal", "--yes"])
 
     assert result.exit_code == 0
     body = _parse_cli_json(result)
@@ -437,7 +470,7 @@ def test_json_apply_failed_run():
     with patch("blacksmith.cli.install_packages", return_value=failed), patch(
         "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
     ), patch("blacksmith.cli.record_audit"):
-        result = CliRunner().invoke(cli, ["--json", "apply", "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", "apply", "minimal", "--yes"])
 
     assert result.exit_code == 1
     body = _parse_cli_json(result)
@@ -456,7 +489,7 @@ def test_json_mutate_signature_failure(command, tmp_path):
     ), patch("blacksmith.cli.install_packages") as mock_install, patch(
         "blacksmith.cli.load_custom_config"
     ) as mock_load:
-        result = CliRunner().invoke(
+        result = _runner().invoke(
             cli,
             [
                 "--json",
@@ -479,7 +512,7 @@ def test_json_mutate_signature_failure(command, tmp_path):
 
 @pytest.mark.parametrize("command", ["install", "apply"])
 def test_json_mutate_require_signature_without_file(command):
-    result = CliRunner().invoke(
+    result = _runner().invoke(
         cli, ["--json", command, "minimal", "--require-signature", "--yes"]
     )
 
@@ -510,7 +543,7 @@ def test_json_install_dry_run_returns_planned_outcomes():
     ), patch("blacksmith.cli.load_set", return_value=PLAN_CONFIG), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["--json", "install", "planned", "--dry-run"])
+        result = _runner().invoke(cli, ["--json", "install", "planned", "--dry-run"])
 
     assert result.exit_code == 0
     body = _parse_cli_json(result)
@@ -536,7 +569,7 @@ def test_json_apply_dry_run_plans_changes_but_exits_zero():
     ), patch("blacksmith.cli.load_set", return_value=config), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["--json", "apply", "planned", "--dry-run"])
+        result = _runner().invoke(cli, ["--json", "apply", "planned", "--dry-run"])
 
     assert result.exit_code == 0
     body = _parse_cli_json(result)
@@ -552,7 +585,7 @@ def test_human_dry_run_still_exits_zero_and_prints_plan():
     ), patch("blacksmith.cli.load_set", return_value=config), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["install", "planned", "--dry-run"])
+        result = _runner().invoke(cli, ["install", "planned", "--dry-run"])
 
     assert result.exit_code == 0
     assert "Dry-run" in result.output
@@ -563,7 +596,7 @@ def test_json_mutate_no_managers(command):
     with patch("blacksmith.cli.detect_available_managers", return_value=[]), patch(
         "blacksmith.cli.load_set", return_value=MINIMAL_CONFIG
     ), patch("blacksmith.cli.install_packages") as mock_install:
-        result = CliRunner().invoke(cli, ["--json", command, "minimal", "--yes"])
+        result = _runner().invoke(cli, ["--json", command, "minimal", "--yes"])
 
     assert result.exit_code == 1
     body = _parse_cli_json(result)
@@ -577,7 +610,7 @@ def test_json_install_os_mismatch_is_diagnosable():
     with patch("blacksmith.cli.load_set", return_value=config), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["--json", "install", "other-os", "--yes"])
+        result = _runner().invoke(cli, ["--json", "install", "other-os", "--yes"])
 
     assert result.exit_code == 1
     body = _parse_cli_json(result)
@@ -612,7 +645,7 @@ def test_json_install_file_reports_config_path(tmp_path):
     with patch(
         "blacksmith.cli.install_packages", return_value=_changed_result()
     ), patch("blacksmith.cli.record_audit"):
-        result = CliRunner().invoke(
+        result = _runner().invoke(
             cli, ["--json", "install", "--file", str(config), "--yes"]
         )
 
@@ -636,7 +669,7 @@ def test_json_install_unresolvable_packages_report_failed_outcomes():
     ), patch("blacksmith.cli.load_set", return_value=config), patch(
         "blacksmith.cli.record_audit"
     ):
-        result = CliRunner().invoke(cli, ["--json", "install", "unresolvable", "--yes"])
+        result = _runner().invoke(cli, ["--json", "install", "unresolvable", "--yes"])
 
     assert result.exit_code == 1
     body = _parse_cli_json(result)
