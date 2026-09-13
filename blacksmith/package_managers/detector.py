@@ -40,7 +40,7 @@ def detect_available_managers() -> List[PackageManager]:
     Returns:
         List of available PackageManager instances
     """
-    available = []
+    available: List[PackageManager] = []
     
     if is_linux():
         # Linux package managers

@@ -20,7 +20,7 @@
 - ✨ **Beautiful CLI** - Clean, intuitive interface with progress indicators and helpful feedback
 - 🎨 **Custom color scheme** - Elegant purple and cyan theme
 - ⚡ **Fast installation** - Automatically detects and uses the best package manager for each tool
-- ✅ **Package validation** - Verify package names before installation
+- ✅ **Package ID safety** - Allowlists package IDs and search queries before they reach package managers (does not prove a package exists upstream)
 - 📤 **Export functionality** - Export sets to native package manager formats (Winget JSON, Chocolatey XML, etc.)
 - 🔄 **Update support** - Check for installed packages and update them when available
 - 📊 **Set information** - View detailed information about sets including OS compatibility and manager preferences
@@ -432,7 +432,7 @@ Blacksmith automatically detects which package managers are available on your sy
 
 ## 🍎 macOS Support (Future)
 
-macOS support is planned for a future release. While the codebase includes some macOS compatibility (OS detection, install scripts), full support is not yet available.
+macOS support is planned for a future release. While the codebase includes some macOS compatibility (OS detection, preference stubs), full support is not yet available.
 
 **Planned features for macOS:**
 
@@ -503,9 +503,16 @@ blacksmith/
 │   ├── package_managers/   # Package manager implementations
 │   ├── sets/               # Pre-made tool sets
 │   └── utils/              # Utility modules
+│       ├── deferred_delete.py  # Safe post-exit cleanup helpers
+│       ├── identifiers.py  # Package ID / search query allowlists
+│       ├── logger.py       # Rich-formatted logging setup
 │       ├── os_detector.py  # OS detection
+│       ├── safe_paths.py   # Uninstall path constraints
+│       ├── tty.py          # Non-interactive / TTY guards
 │       └── ui.py           # UI helpers (Rich)
 ├── tests/                  # Test suite
+├── requirements.txt        # Runtime dependency ranges
+├── requirements.lock       # Pinned deps for reproducible audits
 ├── scripts/                # Helper scripts
 │   └── bump_version.py     # Version bumping script
 └── README.md
