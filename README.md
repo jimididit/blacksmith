@@ -1,858 +1,202 @@
-# Blacksmith 🔨
+<h1 align="center">Blacksmith</h1>
 
-> A cross-platform CLI tool that automates the installation of development and cybersecurity tools after a fresh OS install.
+<p align="center">
+  Cross-platform CLI that installs curated development and cybersecurity<br>
+  tool sets after a fresh OS install.
+</p>
 
-[![CI/CD Pipeline](https://github.com/jimididit/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/jimididit/blacksmith/actions/workflows/ci.yml)
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/jimididit/blacksmith/releases)
-[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/jimididit/blacksmith)
-[![GitHub](https://img.shields.io/badge/GitHub-jimididit%2Fblacksmith-blue.svg)](https://github.com/jimididit/blacksmith)
+<p align="center">
+  <a href="https://github.com/jimididit/blacksmith/actions/workflows/ci.yml"><img src="https://github.com/jimididit/blacksmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python 3.8+"></a>
+  <a href="https://github.com/jimididit/blacksmith/releases"><img src="https://img.shields.io/badge/version-0.3.0-blue.svg" alt="Version 0.3.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="Apache 2.0"></a>
+  <a href="https://github.com/jimididit/blacksmith"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg" alt="Platform"></a>
+</p>
 
-## ✨ Features
+<p align="center">
+  <a href="#install">Install</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#quick-start">Quick start</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#commands">Commands</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#configuration">Configuration</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#package-managers">Package managers</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#trust">Trust</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#troubleshooting">Troubleshooting</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#contributing">Contributing</a>
+  &nbsp;&middot;&nbsp;
+  <a href="SECURITY.md">Security</a>
+</p>
 
-- 🎯 **Pre-made tool sets** - Choose from curated sets of development or cybersecurity tools
-- 🛠️ **Custom configurations** - Create your own sets or use custom config files
-- 🔍 **Unified package search** - Search across available managers with multi-select support
-- 🌐 **Cross-platform sets** - Define sets for Windows, Linux, and/or macOS with OS-specific manager preferences
-- 📦 **Multiple package managers** - apt, yum, pacman, winget, chocolatey, scoop, snap, flatpak, and Homebrew (brew)
-- 🎯 **Smart manager selection** - Preferred managers with automatic fallback
-- ✨ **Beautiful CLI** - Progress indicators and clear feedback
-- ⚡ **Automation-friendly installs** - `--yes`, `--dry-run`, and `--fail-fast` for CI / non-TTY use
-- ✅ **Package ID safety** - Allowlists package IDs and search queries before they reach package managers (does **not** prove a package exists upstream or that its contents are safe)
-- 📤 **Export** - Export sets to native formats (Winget JSON, Chocolatey XML, apt/pacman lists, scoop)
-- 🔄 **Update support** - Detect installed packages and update when available
-- 📊 **Set information** - OS compatibility and manager preferences per set
+## Features
 
-## 🛡️ Trust & threat model
+- Pre-made sets: `development`, `cybersecurity`, `minimal` - see [Quick start](#quick-start)
+- Custom YAML sets and a create wizard - see [Configuration](#configuration)
+- Multiple package managers on Linux, Windows, and macOS - see [Package managers](#package-managers)
+- Smart manager selection with OS preferences and fallback
+- Automation flags: `--yes`, `--dry-run`, `--fail-fast` - see [Commands](#commands)
+- Package ID allowlist for argv safety (not upstream existence or content trust) - see [Trust](#trust)
+- Export to native manager formats - see [Commands](#commands)
 
-Blacksmith installs software by invoking your local package managers. Treat set YAML like code you are willing to run.
+## Install
 
-| Source | What Blacksmith guarantees | What it does **not** guarantee |
-|--------|----------------------------|--------------------------------|
-| Built-in sets (`development`, `minimal`, …) | Schema validation; package IDs pass an argv allowlist; managers are called with `shell=False` | That upstream packages are benign, correctly named, or pinned to a version |
-| Your own YAML | Same technical checks | Same — you own the IDs you write |
-| Third-party / shared `--file` YAML | Untrusted-source warning; non-interactive use requires `--yes` or `--dry-run`; ID allowlist blocks shell metacharacters and leading `-` | Cryptographic authenticity (no signatures yet); live “does this package exist?” lookup on every install; rollback after partial failure |
+Requires Python 3.8+ and at least one [supported package manager](#package-managers).
 
-**Practical rule:** Only install sets you authored or fully reviewed. A valid ID like `evilcorp.Backdoor` still installs if the manager resolves it. Sharing a set is sharing a list of package-manager operands, not a verified supply chain.
+```bash
+pip install jdi-blacksmith
+blacksmith --version
+```
 
-## 📋 Prerequisites
+### Virtualenv (recommended)
 
-- Python 3.8 or higher
-- One or more supported package managers installed on your system
-
-## 🚀 Quick Start
-
-### Recommended: Install in a Virtual Environment
-
-We recommend installing Blacksmith in a virtual environment to avoid PATH issues and ensure proper isolation.
-
-**1. Create a virtual environment:**
-
-**Linux/macOS:**
+Linux / macOS:
 
 ```bash
 python3 -m venv ~/.blacksmith-venv
 source ~/.blacksmith-venv/bin/activate
+pip install jdi-blacksmith
 ```
 
-**Windows (PowerShell):**
+Windows (PowerShell):
 
 ```powershell
 python -m venv $env:USERPROFILE\.blacksmith-venv
 $env:USERPROFILE\.blacksmith-venv\Scripts\Activate.ps1
-```
-
-**Windows (CMD):**
-
-```cmd
-python -m venv %USERPROFILE%\.blacksmith-venv
-%USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
-```
-
-**2. Install Blacksmith:**
-
-**Option A: Install from PyPI (recommended)**
-
-```bash
 pip install jdi-blacksmith
 ```
 
-**Option B: Install from source**
+From source: `git clone` the repo, then `pip install -e .`.
 
-```bash
-git clone https://github.com/jimididit/blacksmith.git
-cd blacksmith
-pip install -e .
-```
+PATH or permission problems: [Troubleshooting](#troubleshooting).
 
-**3. Verify installation:**
-
-```bash
-blacksmith --version
-```
-
-**4. Using Blacksmith:**
-
-After installation, make sure your virtual environment is activated. To activate it again later:
-
-**Linux/macOS:**
-
-```bash
-source ~/.blacksmith-venv/bin/activate
-```
-
-**Windows (PowerShell):**
-
-```powershell
-$env:USERPROFILE\.blacksmith-venv\Scripts\Activate.ps1
-```
-
-**Windows (CMD):**
-
-```cmd
-%USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
-```
-
-**Optional:** Create an alias for easier access:
-
-**Linux/macOS (~/.bashrc or ~/.zshrc):**
-
-```bash
-alias blacksmith="$HOME/.blacksmith-venv/bin/blacksmith"
-```
-
-**Windows (PowerShell Profile):**
-
-```powershell
-Set-Alias blacksmith "$env:USERPROFILE\.blacksmith-venv\Scripts\blacksmith.exe"
-```
-
-### Alternative: Install Without Virtual Environment
-
-If you prefer not to use a virtual environment, you can install directly:
-
-```bash
-# From PyPI
-pip install jdi-blacksmith
-
-# Or from source
-git clone https://github.com/jimididit/blacksmith.git
-cd blacksmith
-pip install -e .
-```
-
-> ⚠️ **Note:** Installing without a virtual environment may cause PATH issues. If `blacksmith` is not recognized after installation, you may need to add Python's Scripts/bin directory to your PATH. See the [Troubleshooting Installation](#-troubleshooting-installation) section below.
-
-> 💡 **Having installation issues?** See the [Troubleshooting Installation](#-troubleshooting-installation) section below.
-
-## 📖 Usage
-
-### Quick Command Reference
-
-```bash
-# Interactive mode (shows menu)
-blacksmith
-
-# List available sets with OS compatibility
-blacksmith list
-
-# View detailed set information
-blacksmith info <set_name>
-
-# Install a built-in set
-blacksmith install <set_name>
-
-# Preview plan without installing
-blacksmith install <set_name> --dry-run
-
-# Non-interactive / CI (required when stdin is not a TTY)
-blacksmith install <set_name> --yes
-
-# Stop after the first package failure (default: best-effort continue)
-blacksmith install <set_name> --fail-fast
-
-# Custom YAML — treat as untrusted; prefer --dry-run first, then --yes
-blacksmith install --file path/to/your-config.yaml --dry-run
-blacksmith install --file path/to/your-config.yaml --yes
-
-# Create a custom set
-blacksmith create
-
-# Search for packages
-blacksmith search <query> [--manager <name>]
-
-# Export set to native format
-blacksmith export <set_name> --format <format>
-
-# Validate a config file (schema + ID allowlist; not upstream existence)
-blacksmith validate <path>
-
-# Uninstall Blacksmith
-blacksmith uninstall [--yes]
-```
-
-### Interactive Mode
-
-The easiest way to use Blacksmith is through the interactive menu:
-
-```bash
-blacksmith
-```
-
-This will display a beautiful banner and an interactive menu to select and install tool sets.
-
-### List Available Sets
-
-View all available sets with OS compatibility indicators:
+## Quick start
 
 ```bash
 blacksmith list
+blacksmith install minimal --dry-run
+blacksmith install minimal --yes
 ```
 
-The list shows:
+| Set | Focus |
+|-----|-------|
+| `development` | Git, Docker, editors, language toolchains |
+| `cybersecurity` | Security and pentest tooling |
+| `minimal` | Essentials (includes `brew:` IDs for macOS) |
 
-- Set name and description
-- OS compatibility badges (🪟 Windows, 🐧 Linux, 🍎 macOS)
-- Preferred package managers
-- Package count
-- Compatibility status with your current OS
+Custom YAML and create wizard: [Configuration](#configuration). Flags and policy: [Commands](#commands). Shared files: [Trust](#trust).
 
-### Install Pre-made Sets
+## Commands
 
-```bash
-# List available sets
-blacksmith list
+| Command | Purpose |
+|---------|---------|
+| `blacksmith` | Interactive menu |
+| `blacksmith list` | List sets |
+| `blacksmith info <set>` | Set details |
+| `blacksmith install <set>` | Install a set |
+| `blacksmith install <set> --dry-run` | Preview plan only |
+| `blacksmith install <set> --yes` | Non-interactive (required without a TTY) |
+| `blacksmith install <set> --fail-fast` | Stop on first package failure |
+| `blacksmith install --file path.yaml --yes` | Install custom YAML ([untrusted](#trust)) |
+| `blacksmith create` / `create --advanced` | Create a set |
+| `blacksmith search <query> [--manager name]` | Search managers |
+| `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
+| `blacksmith validate <path>` | Schema + ID allowlist check |
+| `blacksmith uninstall [--yes]` | Remove Blacksmith |
 
-# Install a specific set
-blacksmith install development
-blacksmith install cybersecurity
-blacksmith install minimal
-```
+Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 
-### Install from Custom Config
+**Policy:** default is best-effort continue after failures (no rollback). Each package installs individually.
 
-```bash
-# Always review third-party YAML before installing
-blacksmith install --file path/to/your-config.yaml --dry-run
-blacksmith install --file path/to/your-config.yaml --yes
-```
+**Privileges:** on Linux, apt / pacman / yum|dnf / snap may prompt for sudo. Flatpak and Homebrew do not use that path.
 
-> ⚠️ **Trust warning:** `--file` loads arbitrary YAML. Blacksmith prints an untrusted-source notice and, without a TTY, requires `--yes` or `--dry-run`. Package IDs are allowlisted for argv safety only — they are **not** a content or reputation check. See [Trust & threat model](#trust--threat-model).
+**Search note:** Snap and Flatpak support install, but `search` does not query them yet.
 
-### Create Your Own Set
-
-```bash
-# Standard mode (cross-platform, multi-manager)
-blacksmith create
-
-# Advanced mode (single-OS, single-manager sets)
-blacksmith create --advanced
-```
-
-This launches an interactive wizard to create a custom tool set configuration. The wizard includes:
-
-- **OS selection**: Windows, Linux, macOS, or combinations
-- **Manager selection**: Which package managers to target per OS (including `brew` on macOS)
-- **Unified search**: Search across selected managers and multi-select results
-- **Smart grouping**: Groups the same package from different managers
-- **ID checks**: Package IDs must pass the argv allowlist (not live upstream validation)
-- **Export ready**: Sets are saved with OS compatibility and manager preferences
-
-### Search for Packages
-
-Search for packages across all available package managers:
-
-```bash
-# Search across all managers
-blacksmith search docker
-
-# Search in a specific package manager (supports aliases)
-blacksmith search git --manager winget
-blacksmith search git --manager choco    # Alias for chocolatey
-
-# Limit results
-blacksmith search python --limit 5
-```
-
-> **Note:** Snap and Flatpak support **install**, but `blacksmith search` does not query them yet. Discover IDs via another manager or upstream docs, then put them in your set YAML.
-
-**Features:**
-
-- **Real-time results**: Queries each package manager directly for up-to-date results
-- **Manager aliases**: Use `choco` for `chocolatey`, `dnf` for `yum`, etc.
-- **OS-aware errors**: Clear messages when requesting OS-specific managers (e.g., `apt` on Windows)
-- **Unified display**: Results grouped by manager with descriptions
-
-This is especially useful when creating custom sets, as it ensures you use the correct package names for each package manager.
-
-### View Set Information
-
-Get detailed information about a set, including OS compatibility and manager preferences:
-
-```bash
-# View info about a pre-made set
-blacksmith info development
-blacksmith info cybersecurity
-
-# View info about a custom config file
-blacksmith info --file path/to/config.yaml
-```
-
-### Export Sets
-
-Export sets to native package manager formats for use outside of Blacksmith:
-
-```bash
-# Export to Winget JSON format
-blacksmith export development --format winget
-
-# Export to Chocolatey packages.config
-blacksmith export development --format chocolatey
-
-# Export to Apt text list
-blacksmith export development --format apt
-
-# Export with custom output file
-blacksmith export development --format winget --output my-packages.json
-```
-
-**Supported formats:**
-
-- `winget` - JSON array of package IDs
-- `chocolatey` / `choco` - XML packages.config format
-- `apt` - Plain text list
-- `pacman` - Plain text list
-- `scoop` - JSON array
-
-### Validate Configuration Files
-
-```bash
-blacksmith validate path/to/config.yaml
-```
-
-Checks YAML structure, known manager names, and package-ID allowlist rules. It does **not** query package managers to confirm packages exist upstream.
-### Installation Options
-
-```bash
-# Preview resolved (package, manager, id, action) without installing
-blacksmith install development --dry-run
-
-# Skip already installed packages
-blacksmith install development --skip-installed
-
-# Prefer a specific package manager (overrides set preferences)
-blacksmith install development --prefer winget
-
-# Force installation even if OS doesn't match set's target_os
-blacksmith install development --force
-
-# Stop after the first install/update failure (default is best-effort continue)
-blacksmith install development --fail-fast
-
-# Non-interactive / CI: always pass --yes (or --dry-run). Without a TTY, install refuses prompts.
-blacksmith install development --yes
-blacksmith install --file ./my-set.yaml --yes
-```
-
-**Install policy:** By default Blacksmith continues after a package failure (best effort; no rollback). Use `--fail-fast` to stop immediately. Each package is installed individually so success/failure counts match reality.
-
-**Non-interactive:** If stdin is not a TTY, `install` requires `--yes` or `--dry-run`. Interactive confirmation and “already installed?” prompts are not available without a terminal.
-
-**Privileges:** On Linux, `apt` / `pacman` / `yum|dnf` / `snap` may prompt for sudo. **Flatpak** and **Homebrew** do not use that sudo path.
-
-### Uninstall Blacksmith
-
-```bash
-# Using the CLI (removes package and virtual environment)
-blacksmith uninstall
-
-# Skip confirmation prompt
-blacksmith uninstall --yes
-```
-
-The uninstall command will:
-
-- Remove Blacksmith from your Python environment
-- Remove the virtual environment (if installed via `venv` method)
-- Clean up the `blacksmith` command executable
-
-## 📝 Configuration Format
-
-Blacksmith uses YAML configuration files with support for cross-platform sets. Here's an example:
-
-### Basic Format (Backward Compatible)
+## Configuration
 
 ```yaml
 name: "My Custom Set"
-description: "My favorite development tools"
-packages:
-  - name: git
-    managers:
-      apt: git
-      pacman: git
-      winget: Git.Git
-      chocolatey: git
-      scoop: git
-  
-  - name: docker
-    managers:
-      apt: docker.io
-      pacman: docker
-      yum: docker
-      winget: Docker.DockerDesktop
-```
-
-### Advanced Format (Cross-Platform)
-
-```yaml
-name: "Cross-Platform Dev Tools"
-description: "Development tools for Windows, Linux, and macOS"
-target_os: ["windows", "linux", "macos"]  # OS compatibility
-preferred_managers:              # Manager preferences per OS
+description: "My favorite tools"
+target_os: ["windows", "linux", "macos"]
+preferred_managers:
   windows: ["winget", "chocolatey"]
   linux: ["apt", "flatpak"]
   macos: ["brew"]
-managers_supported:              # Limit to specific managers
-  - winget
-  - chocolatey
-  - apt
-  - flatpak
-  - brew
 packages:
   - name: git
     managers:
+      apt: git
+      brew: git
       winget: Git.Git
       chocolatey: git
-      apt: git
-      flatpak: org.gnome.gitg
-      brew: git
 ```
 
-**Configuration Fields:**
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | yes | Set name |
+| `description` | no | Short summary |
+| `target_os` | no | `windows`, `linux`, `macos` / `darwin` |
+| `preferred_managers` | no | Per-OS manager order |
+| `managers_supported` | no | Limit which managers are considered |
+| `packages` | yes | Manager IDs must pass the [argv allowlist](#trust) |
 
-- `name` (required) - Set name
-- `description` (optional) - Set description
-- `target_os` (optional) - Target OSes: `windows`, `linux`, `macos` / `darwin` (string or list)
-- `preferred_managers` (optional) - Dictionary mapping OS to preferred manager order
-- `managers_supported` (optional) - List of managers to limit installation to
-- `packages` (required) - List of packages with manager-specific IDs (each ID must pass the argv allowlist)
+Validate: `blacksmith validate path/to/config.yaml` (structure and allowlist only - not upstream existence).
 
-## 📦 Supported Package Managers
+## Package managers
 
-### Linux
+| OS | Managers |
+|----|----------|
+| Linux | apt, yum/dnf, pacman, snap, flatpak |
+| Windows | winget, chocolatey, scoop |
+| macOS | brew (Homebrew formulas and casks) |
 
-- **apt** - Debian/Ubuntu
-- **yum/dnf** - RHEL/Fedora
-- **pacman** - Arch Linux
-- **snap** - Universal Linux packages
-- **flatpak** - Application sandboxing
+Selection uses set `preferred_managers` when present, otherwise OS defaults (winget then chocolatey then scoop on Windows; brew on macOS), then any other available managers.
 
-### Windows
+macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The `minimal` set includes `brew:` IDs. Broader brew coverage across other sets, MacPorts, and brew export are later work. Install Homebrew: https://brew.sh
 
-- **winget** - Windows Package Manager
-- **chocolatey** - Windows package manager
-- **scoop** - Command-line installer
+## Trust
 
-### macOS
+Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`.
 
-- **brew** - Homebrew (formulas and casks)
-
-**Smart Manager Selection:**
-
-Blacksmith automatically detects which package managers are available on your system and uses intelligent selection:
-
-- **Preference-based**: Uses `preferred_managers` from the set configuration if specified
-- **OS-specific defaults**: Falls back to sensible defaults (e.g., `winget` > `chocolatey` > `scoop` on Windows; `brew` on macOS)
-- **Fallback logic**: If preferred manager isn't available, tries the next one in order
-- **OS compatibility**: Checks if the set is compatible with your OS (can be overridden with `--force`)
-- **Manager filtering**: Respects `managers_supported` to limit which managers are considered
-
-## 🍎 macOS Support
-
-macOS installs use **Homebrew** when `brew` is on `PATH`. Darwin is detected automatically; preferred manager order is `brew`.
-
-**Working today:**
-
-- `BrewManager` (`shell=False` argv installs / upgrades / search)
-- Detector registers Homebrew on Darwin
-- `minimal` set includes `brew:` package IDs
-
-**Still later:**
-
-- Broader brew coverage across development/cybersecurity sets
-- Optional MacPorts
-- Native brew export format
-
-Install Homebrew first: https://brew.sh
-
-## 🎨 Pre-made Sets
-
-### Development
-
-Essential development tools including Git, Docker, VS Code, Python, Node.js, and more.
-
-### Cybersecurity
-
-Security and penetration testing tools including Nmap, Wireshark, Metasploit, Burp Suite, and more.
-
-### Minimal
-
-Lightweight setup with just the essentials: Git, curl, and Vim.
-
-## 🛠️ Development
-
-### Setup Development Environment
+Threat model, reporting vulnerabilities, and a safe review workflow: [SECURITY.md](SECURITY.md).
 
 ```bash
-# Clone the repository
-git clone https://github.com/jimididit/blacksmith.git
-cd blacksmith
-
-# Create a virtual environment
-python -m venv venv
-
-# Activate it
-# On Linux/Mac:
-source venv/bin/activate
-# On Windows:
-venv\Scripts\activate
-
-# Install in development mode
-pip install -e .
-
-# Install development dependencies (for testing and code quality)
-pip install pytest pytest-cov pytest-mock ruff black mypy yamllint
+blacksmith validate path/to/set.yaml
+blacksmith install --file path/to/set.yaml --dry-run
+blacksmith install --file path/to/set.yaml --yes
 ```
 
-### Project Structure
+## Troubleshooting
 
-```
-blacksmith/
-├── blacksmith/
-│   ├── cli.py              # Main CLI interface
-│   ├── config/             # Configuration system
-│   │   ├── loader.py       # Config file loading
-│   │   ├── parser.py       # YAML parsing
-│   │   ├── preferences.py  # Manager preference system
-│   │   └── validator.py    # Config validation
-│   ├── export/             # Export functionality
-│   │   ├── base.py         # Base exporter class
-│   │   ├── winget.py       # Winget JSON exporter
-│   │   ├── chocolatey.py   # Chocolatey XML exporter
-│   │   ├── apt.py          # Apt list exporter
-│   │   ├── pacman.py       # Pacman list exporter
-│   │   └── scoop.py        # Scoop JSON exporter
-│   ├── package_managers/   # Manager backends (apt, brew, winget, …) + results.py
-│   ├── sets/               # Pre-made tool sets
-│   └── utils/              # Utility modules
-│       ├── deferred_delete.py  # Safe post-exit cleanup helpers
-│       ├── identifiers.py  # Package ID / search query allowlists
-│       ├── logger.py       # Rich-formatted logging setup
-│       ├── os_detector.py  # OS detection
-│       ├── safe_paths.py   # Uninstall path constraints
-│       ├── tty.py          # Non-interactive / TTY guards
-│       └── ui.py           # UI helpers (Rich)
-├── tests/                  # Test suite
-├── requirements.txt        # Runtime dependency ranges
-├── requirements.lock       # Pinned deps for reproducible audits
-├── CONTRIBUTING.md         # Branch / PR / CI workflow (source of truth)
-├── scripts/                # Helper scripts
-│   └── bump_version.py     # Version bumping script
-└── README.md
-```
+**Command not found after install**
 
-### Version Management
+- Prefer a [virtualenv](#install) so the entry point stays on PATH while activated.
+- Linux/macOS user install: add `$HOME/.local/bin` to `PATH`.
+- Windows user install: add the user `Scripts` directory from `python -m site --user-base` to PATH.
+- Fallback: `python -m blacksmith --version`
 
-Blacksmith uses [Semantic Versioning](https://semver.org/) (SemVer): `MAJOR.MINOR.PATCH`
+**Permission errors**
 
-- **PATCH** (0.1.0 → 0.1.1): Bug fixes, security patches
-- **MINOR** (0.1.0 → 0.2.0): New features (backward compatible)
-- **MAJOR** (0.2.0 → 1.0.0): Breaking changes, first stable release
+Use `pip install --user jdi-blacksmith` instead of `sudo pip` / admin installs.
 
-**Quick version bump:**
+## Contributing
 
-```bash
-# Bump patch version (0.1.0 -> 0.1.1)
-python scripts/bump_version.py --patch
-
-# Bump minor version (0.1.0 -> 0.2.0)
-python scripts/bump_version.py --minor
-
-# Bump major version (0.1.0 -> 1.0.0)
-python scripts/bump_version.py --major
-
-# Or set a specific version
-python scripts/bump_version.py 0.1.1
-```
-
-**Manual version update:**
-Update the version in both `pyproject.toml` and `blacksmith/__init__.py`, then:
-
-```bash
-git tag -a v0.1.1 -m "Release version 0.1.1"
-git push origin v0.1.1
-```
-
-## 🤝 Contributing
-
-**Do not push commits directly to `main`.** All changes go through a feature branch and pull request. `main` is branch-protected: PRs must pass the required **CI** check before merge.
+Do not push directly to `main`. Use a feature branch and a PR; merge only when the required **CI** check is green.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+## License
 
-### Getting Started
+Apache 2.0 - see [LICENSE](LICENSE).
 
-1. Fork the repository (or clone if you have write access)
-2. Create a feature branch from `main`: `git checkout -b feat/short-description`
-3. Set up your development environment (see the [Development](#️-development) section above)
-
-### Development Workflow
-
-1. Make your changes on the feature branch
-2. Run tests locally (see [Testing](#testing) below)
-3. Push the branch and open a Pull Request into `main`
-4. Wait for the required **CI** status to turn green
-5. Merge only after CI is green
-
-### Testing
-
-Before submitting a PR, please ensure all tests pass:
-
-```bash
-# Install test dependencies
-pip install pytest pytest-cov pytest-mock
-
-# Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ -v --cov=blacksmith --cov-report=term
-
-# Run specific test file
-pytest tests/test_cli.py -v
-```
-
-### Code Quality
-
-We use several tools to maintain code quality. Please ensure your code passes these checks:
-
-```bash
-# Install development dependencies
-pip install ruff black mypy yamllint
-
-# Linting (check for errors)
-ruff check blacksmith/
-
-# Formatting (check if code is formatted)
-ruff format --check blacksmith/
-
-# Auto-fix linting issues
-ruff check --fix blacksmith/
-
-# Auto-format code
-ruff format blacksmith/
-
-# Type checking
-mypy blacksmith/ --ignore-missing-imports
-
-# YAML linting
-yamllint blacksmith/sets/*.yaml
-```
-
-### Adding New Package Managers
-
-To add support for a new package manager:
-
-1. Create a new file in `blacksmith/package_managers/` (e.g., `macports.py`)
-2. Inherit from `PackageManager` base class in `blacksmith/package_managers/base.py`
-3. Implement required methods:
-   - `is_available()` - Check if the package manager is installed
-   - `install(packages)` - Install packages
-   - `is_installed(package)` - Check if a package is installed
-   - `search(query)` - Search for packages
-   - `update_package(package)` - Update a single package (optional but recommended)
-4. Register it in `blacksmith/package_managers/detector.py`
-5. Add it to the default preferences in `blacksmith/config/preferences.py` if applicable
-6. Add tests in `tests/test_package_managers.py`
-
-### Adding New Tool Sets
-
-To add a new pre-made tool set:
-
-1. Create a new YAML file in `blacksmith/sets/` (e.g., `gaming.yaml`)
-2. Follow the existing format (see `blacksmith/sets/development.yaml` for reference)
-3. Include package names for all supported package managers
-4. Optionally add cross-platform fields:
-   - `target_os` - List of target OSes (e.g., `["windows", "linux"]`)
-   - `preferred_managers` - OS-specific manager preferences
-   - `managers_supported` - Limit to specific managers
-5. Ensure YAML syntax is valid: `yamllint blacksmith/sets/gaming.yaml`
-6. Test loading the set: `blacksmith list` should show your new set
-7. Test the `info` command: `blacksmith info gaming` should display correctly
-
-### Reporting Bugs
-
-When reporting bugs, please include:
-
-- Operating system and version
-- Python version
-- Blacksmith version (`blacksmith --version`)
-- Steps to reproduce
-- Expected vs actual behavior
-- Error messages or logs (if applicable)
-
-### Feature Requests
-
-For feature requests, please:
-
-- Open an issue describing the feature
-- Explain the use case and benefits
-- Discuss implementation approach (if you have ideas)
-- Consider contributing the feature yourself!
-
-### Code Style Guidelines
-
-- Follow PEP 8 style guide
-- Use type hints where possible
-- Write docstrings for all functions and classes
-- Keep functions focused and small
-- Add comments for complex logic
-- Use meaningful variable and function names
-
-## 🔧 Troubleshooting Installation
-
-### Command Not Found After Installation
-
-If `blacksmith` is not recognized after installation, it's likely a PATH issue:
-
-**Linux/macOS (with `--user` install):**
-
-```bash
-# Add to your ~/.bashrc, ~/.zshrc, or ~/.profile:
-export PATH="$HOME/.local/bin:$PATH"
-
-# Then reload your shell:
-source ~/.bashrc  # or source ~/.zshrc
-```
-
-**Windows (with `--user` install):**
-
-```powershell
-# Find your user Scripts directory:
-python -m site --user-base
-
-# Add it to PATH (replace with your actual path):
-# Typically: %USERPROFILE%\AppData\Roaming\Python\Python3X\Scripts
-# Or: %LOCALAPPDATA%\Programs\Python\Python3X\Scripts
-
-# Then restart your terminal
-```
-
-**Use a Virtual Environment (Recommended)**
-
-Using a virtual environment is the most reliable option and avoids PATH issues:
-
-```bash
-# Create and activate a virtual environment
-python3 -m venv ~/.blacksmith-venv
-
-# Activate it:
-# Linux/macOS:
-source ~/.blacksmith-venv/bin/activate
-# Windows (PowerShell):
-$env:USERPROFILE\.blacksmith-venv\Scripts\Activate.ps1
-# Windows (CMD):
-%USERPROFILE%\.blacksmith-venv\Scripts\activate.bat
-
-# Install blacksmith
-pip install jdi-blacksmith
-
-# Now blacksmith will work as long as the venv is activated
-blacksmith --version
-```
-
-### Permission Errors (Global Installation)
-
-If you get permission errors when installing globally:
-
-**Linux/macOS:**
-
-```bash
-# Use sudo (not recommended for security):
-sudo pip install jdi-blacksmith
-
-# Better: Use --user flag (no sudo needed):
-pip install --user jdi-blacksmith
-```
-
-**Windows:**
-
-```powershell
-# Run PowerShell as Administrator, then:
-pip install jdi-blacksmith
-
-# Better: Use --user flag (no admin needed):
-pip install --user jdi-blacksmith
-```
-
-### Installation Works But Command Not Found
-
-If installation succeeds but the command isn't found:
-
-1. **Check if it's installed:**
-
-   ```bash
-   python -m blacksmith --version
-   ```
-
-2. **Find where pip installed the script:**
-
-   ```bash
-   # Linux/macOS:
-   python -m site --user-base
-   # Then check: <path>/bin/blacksmith
-   
-   # Windows:
-   python -m site --user-base
-   # Then check: <path>\Scripts\blacksmith.exe
-   ```
-
-3. **Verify the entry point:**
-
-   ```bash
-   pip show jdi-blacksmith
-   # Look for "Location:" and "Entry-points:"
-   ```
-
-## 📄 License
-
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
-
-## 👤 Author
+## Author
 
 **jimididit**
 
 - GitHub: [@jimididit](https://github.com/jimididit)
-- Instagram: [@jimididit](https://instagram.com/jimi.did.it)
-- YouTube: [@jimididit](https://youtube.com/@jimididit)
-- TikTok: [@jimididit](https://tiktok.com/@jimi.did.it)
 - Website: [www.jimididit.com](https://jimididit.com)
-- Discord: [NØKTURNAL COMMUNITY](https://jimididit.com/discord)
-
-## 🙏 Acknowledgments
-
-- Built with [Click](https://click.palletsprojects.com/) for CLI framework
-- Beautiful terminal output powered by [Rich](https://github.com/Textualize/rich)
-- Interactive prompts with [Questionary](https://github.com/tmbo/questionary)
-
-## 📚 Additional Resources
-
-- **Repository**: [https://github.com/jimididit/blacksmith](https://github.com/jimididit/blacksmith)
-- [Issue Tracker](https://github.com/jimididit/blacksmith/issues)
-- [Discussions](https://github.com/jimididit/blacksmith/discussions)
-
----
-
-⭐ If you find this project helpful, please consider giving it a star on [GitHub](https://github.com/jimididit/blacksmith)!
+- Discord: [Nokturnal Community](https://jimididit.com/discord)
