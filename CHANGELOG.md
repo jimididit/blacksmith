@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `blacksmith apply`: idempotent ensure-state (skip installed, post-install verify)
 - Apply exit codes: `0` compliant, `2` changed, `1` failed
 - `blacksmith uninstall` detects pipx-managed installs and runs `pipx uninstall`
+- Windows self-uninstall: prefer Scripts\\pip.exe, unlock locked .exe, deferred pip fallback
 
 ### Changed
 
