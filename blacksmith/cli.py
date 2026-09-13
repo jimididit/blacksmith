@@ -774,7 +774,8 @@ def cli(ctx: click.Context, json_mode: bool):
                 # Otherwise continue loop to show menu again
     else:
         # Show banner for subcommands (but not for built-in click commands)
-        show_banner()
+        if not json_mode:
+            show_banner()
 
 
 @cli.command("list")
@@ -1386,8 +1387,89 @@ def validate(ctx: click.Context, config_path: str):
 @click.argument("query", required=False)
 @click.option("--manager", "-m", help="Filter by specific package manager")
 @click.option("--limit", "-l", default=10, help="Maximum number of results")
-def search(query: Optional[str], manager: Optional[str], limit: int):
+@click.pass_context
+def search(
+    ctx: click.Context, query: Optional[str], manager: Optional[str], limit: int
+):
     """Search for packages across available package managers."""
+    if is_json_mode(ctx):
+        if not query:
+            emit_error(
+                command="search",
+                exit_code=2,
+                code="needs_args",
+                message="Search query is required with --json.",
+            )
+            sys.exit(2)
+
+        from blacksmith.utils.identifiers import validate_search_query
+
+        query_ok, query_error = validate_search_query(query)
+        if not query_ok:
+            emit_error(
+                command="search",
+                exit_code=2,
+                code="invalid_query",
+                message=query_error or "Invalid search query",
+            )
+            sys.exit(2)
+
+        available_managers = detect_available_managers()
+        if manager:
+            manager_aliases = {
+                "choco": "chocolatey",
+                "dnf": "yum",
+                "homebrew": "brew",
+            }
+            canonical_name = manager_aliases.get(manager.lower(), manager.lower())
+            available_managers = [
+                mgr
+                for mgr in available_managers
+                if mgr.name.lower() == canonical_name
+            ]
+
+        if not available_managers:
+            emit_error(
+                command="search",
+                exit_code=1,
+                code="no_managers",
+                message="No matching package managers detected on this system.",
+            )
+            sys.exit(1)
+
+        result_groups = []
+        notes = []
+        for mgr in available_managers:
+            packages = mgr.search(query, limit=limit)
+            if packages:
+                result_groups.append(
+                    {
+                        "manager": mgr.name,
+                        "packages": [
+                            {
+                                "name": package.get("name"),
+                                "id": package.get("id"),
+                                "description": package.get("description"),
+                            }
+                            for package in packages
+                        ],
+                    }
+                )
+            elif mgr.name in ("snap", "flatpak"):
+                notes.append(f"{mgr.name} search is not implemented")
+
+        emit_ok(
+            command="search",
+            exit_code=0,
+            data={
+                "query": query,
+                "limit": limit,
+                "results": result_groups,
+                "notes": notes,
+            },
+        )
+        return
+
     available_managers = detect_available_managers()
     
     if not available_managers:

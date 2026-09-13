@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -113,6 +114,14 @@ def test_json_list_includes_minimal():
     }
 
 
+def test_json_list_stdout_is_single_json_object():
+    result = CliRunner().invoke(cli, ["--json", "list"])
+
+    assert result.exit_code == 0
+    body = json.loads(result.output.strip())
+    assert body["command"] == "list"
+
+
 def test_json_info_minimal_has_packages():
     result = CliRunner().invoke(cli, ["--json", "info", "minimal"])
 
@@ -130,3 +139,72 @@ def test_json_info_needs_args():
 
     assert result.exit_code == 2
     assert _parse_cli_json(result)["error"]["code"] == "needs_args"
+
+
+def test_json_search_needs_query():
+    result = CliRunner().invoke(cli, ["--json", "search"])
+
+    assert result.exit_code == 2
+    assert _parse_cli_json(result)["error"]["code"] == "needs_args"
+
+
+def test_json_search_invalid_query():
+    result = CliRunner().invoke(cli, ["--json", "search", ";rm -rf"])
+
+    assert result.exit_code != 0
+    assert _parse_cli_json(result)["error"]["code"] == "invalid_query"
+
+
+def test_json_search_results_mocked():
+    class FakeManager:
+        name = "apt"
+
+        def search(self, query, limit=10):
+            assert query == "git"
+            assert limit == 5
+            return [{"name": "git", "id": "git", "description": "vcs"}]
+
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[FakeManager()]
+    ):
+        result = CliRunner().invoke(cli, ["--json", "search", "git", "--limit", "5"])
+
+    assert result.exit_code == 0
+    body = json.loads(result.output.strip())
+    assert body["data"] == {
+        "query": "git",
+        "limit": 5,
+        "results": [
+            {
+                "manager": "apt",
+                "packages": [{"name": "git", "id": "git", "description": "vcs"}],
+            }
+        ],
+        "notes": [],
+    }
+
+
+def test_json_search_empty_results_are_success():
+    class FakeManager:
+        name = "apt"
+
+        def search(self, query, limit=10):
+            return []
+
+    with patch(
+        "blacksmith.cli.detect_available_managers", return_value=[FakeManager()]
+    ):
+        result = CliRunner().invoke(cli, ["--json", "search", "unknown"])
+
+    assert result.exit_code == 0
+    body = json.loads(result.output.strip())
+    assert body["ok"] is True
+    assert body["data"]["results"] == []
+
+
+def test_json_search_no_managers():
+    with patch("blacksmith.cli.detect_available_managers", return_value=[]):
+        result = CliRunner().invoke(cli, ["--json", "search", "git"])
+
+    assert result.exit_code == 1
+    assert _parse_cli_json(result)["error"]["code"] == "no_managers"
