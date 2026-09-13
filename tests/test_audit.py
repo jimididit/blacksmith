@@ -1,8 +1,12 @@
 import json
 from pathlib import Path
 
+from click.testing import CliRunner
+
 from blacksmith.audit.log import audit_disabled, filter_auditable, record_audit
 from blacksmith.audit.paths import default_audit_log_path, user_config_dir
+from blacksmith.audit.read import load_events
+from blacksmith.cli import cli
 from blacksmith.package_managers.results import PackageOutcome, PackageStatus
 
 
@@ -122,3 +126,56 @@ def test_record_audit_fail_open(tmp_path):
     )
     assert run_id is None
     assert warnings
+
+
+def test_load_events_last_n_and_corrupt(tmp_path):
+    log = tmp_path / "audit.jsonl"
+    rows = [
+        {
+            "type": "run",
+            "ts": "2026-01-01T00:00:00Z",
+            "run_id": "1",
+            "command": "install",
+            "exit": 0,
+        },
+        {
+            "type": "package",
+            "ts": "2026-01-01T00:00:00Z",
+            "run_id": "1",
+            "name": "git",
+            "action": "install",
+            "status": "ok",
+        },
+        "NOT_JSON",
+        {
+            "type": "run",
+            "ts": "2026-01-02T00:00:00Z",
+            "run_id": "2",
+            "command": "apply",
+            "exit": 2,
+        },
+    ]
+    with log.open("w", encoding="utf-8") as file:
+        for row in rows:
+            file.write((row if isinstance(row, str) else json.dumps(row)) + "\n")
+
+    events, corrupt = load_events(path=log, last=2)
+
+    assert corrupt == 1
+    assert len(events) == 2
+    assert events[0]["run_id"] == "1"
+    assert events[0]["type"] == "package"
+    assert events[1]["run_id"] == "2"
+
+
+def test_cli_audit_empty(monkeypatch, tmp_path):
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(
+        "blacksmith.audit.read.default_audit_log_path", lambda: log
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["audit"])
+
+    assert result.exit_code == 0
+    assert "No audit events" in result.output

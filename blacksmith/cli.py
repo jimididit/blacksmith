@@ -724,6 +724,63 @@ def list_sets():
     print_info(os_legend_text())
 
 
+@cli.command("audit")
+@click.option(
+    "--last",
+    "last_n",
+    default=50,
+    show_default=True,
+    type=int,
+    help="Show last N events",
+)
+def audit_cmd(last_n: int):
+    """Show recent local audit log events."""
+    from blacksmith.audit.read import default_audit_log_path, load_events
+
+    log_path = default_audit_log_path()
+    events, corrupt = load_events(path=log_path, last=last_n)
+    if not events:
+        console.print("[dim]No audit events yet.[/dim]")
+        console.print(f"[dim]Log path: {log_path}[/dim]")
+        if corrupt:
+            print_warning(f"Skipped {corrupt} corrupt line(s).")
+        return
+
+    table = Table(title="Audit log")
+    table.add_column("ts")
+    table.add_column("type")
+    table.add_column("command/action")
+    table.add_column("name")
+    table.add_column("manager")
+    table.add_column("status/exit")
+    table.add_column("user/set")
+    for event in events:
+        if event.get("type") == "run":
+            table.add_row(
+                str(event.get("ts", "")),
+                "run",
+                str(event.get("command", "")),
+                "",
+                "",
+                str(event.get("exit", "")),
+                f"{event.get('user') or ''}/{event.get('set') or ''}",
+            )
+        else:
+            table.add_row(
+                str(event.get("ts", "")),
+                "package",
+                str(event.get("action", "")),
+                str(event.get("name") or event.get("id") or ""),
+                str(event.get("manager", "")),
+                str(event.get("status", "")),
+                "",
+            )
+    console.print(table)
+    console.print(f"[dim]Log path: {log_path}[/dim]")
+    if corrupt:
+        print_warning(f"Skipped {corrupt} corrupt line(s).")
+
+
 @cli.command()
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", help="Path to custom config file")
