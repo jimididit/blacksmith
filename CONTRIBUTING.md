@@ -59,6 +59,10 @@ Quality lint (Ruff/mypy/yamllint) may still report warnings while the codebase i
 
 ## Releases
 
-Tag `v*` on `main` after merge to trigger the release job (PyPI + GitHub Release). Prefer tagging only from `main` at a green commit.
+1. Move items from `[Unreleased]` into a new version section in [`CHANGELOG.md`](CHANGELOG.md).
+2. Bump the version (`scripts/bump_version.py` or edit `pyproject.toml` + `blacksmith/__init__.py`).
+3. Merge to `main` with green **CI**, then tag `v*` on `main` to trigger the release job (PyPI + GitHub Release).
+
+The release workflow pulls the matching `## [x.y.z]` section from `CHANGELOG.md` for the GitHub Release body (falls back to auto-generated notes if missing).
 
 PyPI upload uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) via the GitHub Environment **`release`**, matching the publisher configured for `jdi-blacksmith`. No long-lived `PYPI_API_TOKEN` is required. After the first successful OIDC publish, delete any leftover `PYPI_API_TOKEN` repository secret if it still exists.

@@ -193,6 +193,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 Apache 2.0 - see [LICENSE](LICENSE).
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## Author
 
 **jimididit**
