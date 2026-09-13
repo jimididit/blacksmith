@@ -1620,9 +1620,13 @@ def create(advanced: bool):
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 def uninstall(yes):
     """Uninstall Blacksmith itself."""
+    import os
     import shutil
+    import subprocess
     import sys
     from pathlib import Path
+
+    from rich.prompt import Confirm
 
     from blacksmith.utils.deferred_delete import (
         remove_file_now,
@@ -1630,6 +1634,7 @@ def uninstall(yes):
         schedule_delete_file,
         schedule_delete_venv,
     )
+    from blacksmith.utils.pipx import pipx_package_name, should_use_pipx_uninstall
     from blacksmith.utils.safe_paths import (
         assert_safe_blacksmith_executable,
         assert_safe_blacksmith_venv,
@@ -1688,6 +1693,56 @@ def uninstall(yes):
     
     console.print(f"[dim]Found Blacksmith at: {blacksmith_path or 'unknown'}[/dim]")
     console.print(f"[dim]Using Python: {python_exe}[/dim]\n")
+
+    # Prefer pipx when this process or the resolved entry point is pipx-managed.
+    if should_use_pipx_uninstall(prefix=sys.prefix, executable=blacksmith_path):
+        pipx_bin = shutil.which("pipx")
+        pkg = pipx_package_name(sys.prefix) or "jdi-blacksmith"
+        if pipx_bin:
+            console.print(f"[dim]Detected pipx install; trying: pipx uninstall {pkg}...[/dim]")
+            try:
+                result = subprocess.run(
+                    [pipx_bin, "uninstall", pkg],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if result.returncode == 0:
+                    console.print("[green][OK][/green] Successfully uninstalled via pipx")
+                    console.print("\n[bold green]Blacksmith has been uninstalled.[/bold green]")
+                    console.print(
+                        "[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]"
+                    )
+                    return
+                # Retry canonical PyPI name if venv folder name differed
+                if pkg != "jdi-blacksmith":
+                    retry = subprocess.run(
+                        [pipx_bin, "uninstall", "jdi-blacksmith"],
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if retry.returncode == 0:
+                        console.print("[green][OK][/green] Successfully uninstalled via pipx")
+                        console.print("\n[bold green]Blacksmith has been uninstalled.[/bold green]")
+                        console.print(
+                            "[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]"
+                        )
+                        return
+                err = (result.stderr or result.stdout or "").strip()
+                if err:
+                    logger.debug(f"pipx uninstall failed: {err[:200]}")
+                print_warning("pipx uninstall failed; falling back to pip methods.")
+            except subprocess.TimeoutExpired:
+                print_warning("pipx uninstall timed out; falling back to pip methods.")
+            except Exception as e:
+                logger.debug(f"pipx uninstall raised: {e}")
+                print_warning("pipx uninstall failed; falling back to pip methods.")
+        else:
+            print_warning(
+                "pipx install detected but `pipx` is not on PATH; "
+                "falling back to pip methods (prefer: pipx uninstall jdi-blacksmith)."
+            )
     
     uninstall_methods = []
     
@@ -1816,6 +1871,7 @@ def uninstall(yes):
     print_error("Could not automatically uninstall Blacksmith.")
     print_info("You may need to manually remove it:")
     print_info(f"  - Remove the command: {blacksmith_path}")
+    print_info("  - If installed with pipx: pipx uninstall jdi-blacksmith")
     print_info(f"  - Run: {python_exe} -m pip uninstall jdi-blacksmith")
     print_info("  - Or: pip uninstall jdi-blacksmith")
     print_info("  - Or: pip uninstall --user jdi-blacksmith")
@@ -1825,7 +1881,7 @@ def uninstall(yes):
         print_info("\nTroubleshooting:")
         print_info(f"  - Python executable: {python_exe}")
         print_info(f"  - Blacksmith path: {blacksmith_path}")
-        print_info("  - Try running the pip command manually to see the error")
+        print_info("  - Try running the pip or pipx command manually to see the error")
 
 
 

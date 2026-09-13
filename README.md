@@ -47,14 +47,23 @@
 
 Requires Python 3.8+ and at least one [supported package manager](#package-managers).
 
+Recommended (isolated CLI via [pipx](https://pipx.pypa.io/)):
+
+```bash
+pipx install jdi-blacksmith
+blacksmith --version
+```
+
+Remove with `blacksmith uninstall` (detects pipx) or `pipx uninstall jdi-blacksmith`.
+
+### pip / virtualenv (fallback)
+
 ```bash
 pip install jdi-blacksmith
 blacksmith --version
 ```
 
-### Virtualenv (recommended)
-
-Linux / macOS:
+Dedicated venv (Linux / macOS):
 
 ```bash
 python3 -m venv ~/.blacksmith-venv
@@ -109,7 +118,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith search <query> [--manager name]` | Search managers |
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
 | `blacksmith validate <path>` | Schema + ID allowlist check |
-| `blacksmith uninstall [--yes]` | Remove Blacksmith |
+| `blacksmith uninstall [--yes]` | Remove Blacksmith (uses pipx when detected) |
 
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 Apply also supports `--prefer`, `--force`, and `--fail-fast`.
@@ -180,14 +189,15 @@ blacksmith install --file path/to/set.yaml --yes
 
 **Command not found after install**
 
-- Prefer a [virtualenv](#install) so the entry point stays on PATH while activated.
+- Prefer [pipx](#install) so `blacksmith` is on PATH without activating a venv.
+- Or use a [virtualenv](#install) and activate it before running commands.
 - Linux/macOS user install: add `$HOME/.local/bin` to `PATH`.
 - Windows user install: add the user `Scripts` directory from `python -m site --user-base` to PATH.
 - Fallback: `python -m blacksmith --version`
 
 **Permission errors**
 
-Use `pip install --user jdi-blacksmith` instead of `sudo pip` / admin installs.
+Prefer `pipx install jdi-blacksmith`, or `pip install --user jdi-blacksmith`, instead of `sudo pip` / admin installs.
 
 ## Contributing
 
