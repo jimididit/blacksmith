@@ -14,10 +14,10 @@ jobs:
     name: Trust Boundary Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -44,10 +44,10 @@ jobs:
     name: Code Quality
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -88,10 +88,10 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -107,9 +107,9 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           flags: unittests
           name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
           fail_ci_if_error: false
@@ -123,10 +123,10 @@ jobs:
         os: [ubuntu-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -165,10 +165,10 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -192,10 +192,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [trust-gate, test]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -245,7 +245,7 @@ jobs:
           fi
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -283,10 +283,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -326,7 +326,7 @@ jobs:
       - name: Generate release notes (if custom not found)
         if: steps.check_notes.outputs.use_custom == 'false'
         id: generate_notes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { data } = await github.rest.repos.generateReleaseNotes({
@@ -339,7 +339,7 @@ jobs:
 
       - name: Create GitHub Release (with custom notes)
         if: steps.check_notes.outputs.use_custom == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: Blacksmith ${{ github.ref_name }}
@@ -350,7 +350,7 @@ jobs:
 
       - name: Create GitHub Release (with generated notes)
         if: steps.check_notes.outputs.use_custom == 'false'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: Blacksmith ${{ github.ref_name }}
