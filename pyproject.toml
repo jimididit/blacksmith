@@ -38,6 +38,7 @@ blacksmith = "blacksmith.cli:main"
 [tool.setuptools]
 packages = [
     "blacksmith",
+    "blacksmith.audit",
     "blacksmith.config",
     "blacksmith.export",
     "blacksmith.package_managers",
