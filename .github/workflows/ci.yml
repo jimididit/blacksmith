@@ -275,13 +275,18 @@ jobs:
           echo "All required CI jobs passed"
 
   # Release (tags only; requires green build from this workflow run)
+  # PyPI Trusted Publisher: jimididit/blacksmith + ci.yml + environment "release"
   release:
     name: Create Release
     runs-on: ubuntu-latest
     needs: [build, ci]
     if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: release
+      url: https://pypi.org/p/jdi-blacksmith
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v7
 
@@ -291,14 +296,15 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Verify distributions
         run: |
-          pip install --upgrade twine packaging > /dev/null 2>&1
+          python -m pip install --upgrade twine packaging > /dev/null
           twine check dist/*
-          twine upload dist/* --skip-existing
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Extract version from tag
         id: get_version

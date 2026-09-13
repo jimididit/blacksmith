@@ -60,3 +60,5 @@ Quality lint (Ruff/mypy/yamllint) may still report warnings while the codebase i
 ## Releases
 
 Tag `v*` on `main` after merge to trigger the release job (PyPI + GitHub Release). Prefer tagging only from `main` at a green commit.
+
+PyPI upload uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) via the GitHub Environment **`release`**, matching the publisher configured for `jdi-blacksmith`. No long-lived `PYPI_API_TOKEN` is required. After the first successful OIDC publish, delete any leftover `PYPI_API_TOKEN` repository secret if it still exists.
