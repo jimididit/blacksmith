@@ -1005,7 +1005,9 @@ def search(query: Optional[str], manager: Optional[str], limit: int):
             'yum': 'yum',
             'dnf': 'yum',  # DNF is handled by YumManager
             'snap': 'snap',
-            'flatpak': 'flatpak'
+            'flatpak': 'flatpak',
+            'brew': 'brew',
+            'homebrew': 'brew',
         }
         
         # Get the canonical name
@@ -1019,6 +1021,7 @@ def search(query: Optional[str], manager: Optional[str], limit: int):
             # Check if it's an OS-specific manager
             linux_managers = ['apt', 'pacman', 'yum', 'dnf', 'snap', 'flatpak']
             windows_managers = ['winget', 'chocolatey', 'choco', 'scoop']
+            macos_managers = ['brew', 'homebrew']
             current_os = detect_os().lower()
             
             if canonical_name in linux_managers and current_os != 'linux':
@@ -1026,6 +1029,9 @@ def search(query: Optional[str], manager: Optional[str], limit: int):
                 print_info(f"You are currently on {current_os.capitalize()}.")
             elif canonical_name in windows_managers and current_os != 'windows':
                 print_error(f"Package manager '{manager}' is only available on Windows.")
+                print_info(f"You are currently on {current_os.capitalize()}.")
+            elif canonical_name in macos_managers and current_os != 'darwin':
+                print_error(f"Package manager '{manager}' is only available on macOS.")
                 print_info(f"You are currently on {current_os.capitalize()}.")
             else:
                 print_error(f"Package manager '{manager}' not found.")
@@ -1094,6 +1100,7 @@ def create(advanced: bool):
         os_choices = [
             questionary.Choice("Windows", "windows"),
             questionary.Choice("Linux", "linux"),
+            questionary.Choice("macOS", "macos"),
         ]
         target_os_selection = questionary.select(
             "Target OS:",
@@ -1109,6 +1116,8 @@ def create(advanced: bool):
         # Get managers for selected OS
         if target_os_selection == "windows":
             os_managers = ["winget", "chocolatey", "scoop"]
+        elif target_os_selection == "macos":
+            os_managers = ["brew"]
         else:
             os_managers = ["apt", "pacman", "yum", "snap", "flatpak"]
         
@@ -1130,7 +1139,9 @@ def create(advanced: bool):
         os_choices = [
             questionary.Choice("Windows only", "windows"),
             questionary.Choice("Linux only", "linux"),
+            questionary.Choice("macOS only", "macos"),
             questionary.Choice("Windows and Linux (cross-platform)", "both"),
+            questionary.Choice("Windows, Linux, and macOS", "all"),
         ]
         
         target_os_selection = questionary.select(
@@ -1146,6 +1157,8 @@ def create(advanced: bool):
         # Determine target OS list
         if target_os_selection == "both":
             target_os_list = ["windows", "linux"]
+        elif target_os_selection == "all":
+            target_os_list = ["windows", "linux", "macos"]
         else:
             target_os_list = [target_os_selection]
         
@@ -1167,6 +1180,8 @@ def create(advanced: bool):
                 os_managers = ["winget", "chocolatey", "scoop"]
             elif os_name == "linux":
                 os_managers = ["apt", "pacman", "yum", "snap", "flatpak"]
+            elif os_name == "macos":
+                os_managers = ["brew"]
             
             if not os_managers:
                 continue

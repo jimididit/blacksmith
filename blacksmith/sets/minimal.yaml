@@ -7,6 +7,7 @@ packages:
       apt: git
       pacman: git
       yum: git
+      brew: git
       winget: Git.Git
       chocolatey: git
       scoop: git
@@ -16,6 +17,7 @@ packages:
       apt: curl
       pacman: curl
       yum: curl
+      brew: curl
       winget: cURL.cURL
       chocolatey: curl
       scoop: curl
@@ -25,6 +27,7 @@ packages:
       apt: vim
       pacman: vim
       yum: vim
+      brew: vim
       winget: vim.vim
       chocolatey: vim
       scoop: vim
@@ -34,6 +37,7 @@ packages:
       apt: wget
       pacman: wget
       yum: wget
+      brew: wget
       winget: GNU.Wget
       chocolatey: wget
       scoop: wget

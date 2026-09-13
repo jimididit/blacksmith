@@ -13,8 +13,9 @@ from blacksmith.package_managers.chocolatey import ChocolateyManager
 from blacksmith.package_managers.scoop import ScoopManager
 from blacksmith.package_managers.snap import SnapManager
 from blacksmith.package_managers.flatpak import FlatpakManager
+from blacksmith.package_managers.brew import BrewManager
 from blacksmith.config.preferences import PreferredManagerOrder
-from blacksmith.utils.os_detector import is_linux, is_windows
+from blacksmith.utils.os_detector import is_linux, is_windows, is_darwin
 from blacksmith.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -62,7 +63,10 @@ def detect_available_managers() -> List[PackageManager]:
             available.append(ChocolateyManager())
         if check_command("scoop"):
             available.append(ScoopManager())
-    
+    elif is_darwin():
+        if check_command("brew"):
+            available.append(BrewManager())
+
     return available
 
 

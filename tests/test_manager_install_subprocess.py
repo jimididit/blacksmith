@@ -8,6 +8,7 @@ import pytest
 import subprocess
 
 from blacksmith.package_managers.apt import AptManager
+from blacksmith.package_managers.brew import BrewManager
 from blacksmith.package_managers.chocolatey import ChocolateyManager
 from blacksmith.package_managers.flatpak import FlatpakManager
 from blacksmith.package_managers.pacman import PacmanManager
@@ -200,6 +201,32 @@ def test_winget_install_timeout(mock_run):
     assert WingetManager().install(["Git.Git"]) is False
 
 
+@patch("blacksmith.package_managers.brew.subprocess.run")
+def test_brew_install_argv_and_shell_false(mock_run):
+    mock_run.return_value = _ok()
+    assert BrewManager().install(["git"]) is True
+    _assert_no_shell(mock_run)
+    assert mock_run.call_args.args[0] == ["brew", "install", "git"]
+
+
+@patch("blacksmith.package_managers.brew.subprocess.run")
+def test_brew_install_fails_on_nonzero(mock_run):
+    mock_run.return_value = _fail()
+    assert BrewManager().install(["git"]) is False
+
+
+@patch("blacksmith.package_managers.brew.subprocess.run")
+def test_brew_install_timeout(mock_run):
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd="brew", timeout=1)
+    assert BrewManager().install(["git"]) is False
+
+
+@patch("blacksmith.package_managers.brew.subprocess.run")
+def test_brew_install_empty_noop(mock_run):
+    assert BrewManager().install([]) is True
+    mock_run.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "module_path,cls,expected_prefix",
     [
@@ -209,6 +236,7 @@ def test_winget_install_timeout(mock_run):
         ("blacksmith.package_managers.flatpak", FlatpakManager, ["flatpak"]),
         ("blacksmith.package_managers.chocolatey", ChocolateyManager, ["choco"]),
         ("blacksmith.package_managers.scoop", ScoopManager, ["scoop"]),
+        ("blacksmith.package_managers.brew", BrewManager, ["brew"]),
     ],
 )
 def test_install_never_sets_shell_true(module_path, cls, expected_prefix):

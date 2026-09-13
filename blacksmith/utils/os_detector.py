@@ -31,3 +31,8 @@ def is_windows() -> bool:
     """Check if running on Windows."""
     return detect_os() == "Windows"
 
+
+def is_darwin() -> bool:
+    """Check if running on macOS (Darwin)."""
+    return detect_os() == "Darwin"
+
