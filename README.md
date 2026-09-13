@@ -120,6 +120,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith search <query> [--manager name]` | Search managers |
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
 | `blacksmith validate <path>` | Schema + ID allowlist check |
+| `blacksmith audit [--last N]` | Show recent local audit events (default 50) |
 | `blacksmith uninstall [--yes]` | Remove Blacksmith (uses pipx when detected) |
 
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
@@ -133,6 +134,21 @@ Signature flags (with `--file`): `--require-signature`, `--signature PATH`, `--p
 **Privileges:** on Linux, apt / pacman / yum|dnf / snap may prompt for sudo. Flatpak and Homebrew do not use that path.
 
 **Search note:** Snap and Flatpak support install, but `search` does not query them yet.
+
+### Audit
+
+```bash
+blacksmith audit
+blacksmith audit --last 20
+```
+
+Mutating `install` / `apply` (and self-`uninstall`) append events to a local JSONL file (`audit.jsonl`) under the platform config directory unless `--no-audit` or `BLACKSMITH_NO_AUDIT=1` is set. Dry-run and no-op runs are not logged.
+
+Default path: `%APPDATA%\blacksmith\audit.jsonl` (Windows) or `~/.config/blacksmith/audit.jsonl` (Linux/macOS; honors `XDG_CONFIG_HOME`).
+
+Use `--no-audit` on `install`, `apply`, and `uninstall`. The bare interactive menu (no subcommand) has no `--no-audit` flag; set `BLACKSMITH_NO_AUDIT=1` to disable audit there.
+
+Privacy: the log may include OS username, set name, config path/hash, and package ids. It is local only; delete the file to clear history. Integrity and threat model: [SECURITY.md](SECURITY.md).
 
 ## Configuration
 
