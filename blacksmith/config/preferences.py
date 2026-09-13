@@ -13,8 +13,8 @@ class PreferredManagerOrder:
     DEFAULT_PREFERENCES: Dict[str, List[str]] = {
         "windows": ["winget", "chocolatey", "scoop"],
         "linux": ["apt", "pacman", "yum", "flatpak", "snap"],
-        "darwin": ["brew", "snap", "flatpak"],  # macOS (for future support)
-        "macos": ["brew", "snap", "flatpak"],  # Alias for darwin
+        "darwin": ["brew"],
+        "macos": ["brew"],  # Alias for darwin
     }
     
     def __init__(self, custom_preferences: Optional[Dict[str, List[str]]] = None):

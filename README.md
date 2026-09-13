@@ -15,7 +15,7 @@
 - 🛠️ **Custom configurations** - Create your own sets or use custom config files
 - 🔍 **Unified package search** - Search across all selected managers simultaneously with multi-select support
 - 🌐 **Cross-platform sets** - Define sets that work on Windows, Linux, or both with OS-specific manager preferences
-- 📦 **Multiple package managers** - Supports apt, yum, pacman, winget, chocolatey, scoop, snap, and flatpak
+- 📦 **Multiple package managers** - Supports apt, yum, pacman, winget, chocolatey, scoop, snap, flatpak, and Homebrew (brew)
 - 🎯 **Smart manager selection** - Automatically uses preferred package managers with intelligent fallback
 - ✨ **Beautiful CLI** - Clean, intuitive interface with progress indicators and helpful feedback
 - 🎨 **Custom color scheme** - Elegant purple and cyan theme
@@ -420,6 +420,10 @@ packages:
 - **chocolatey** - Windows package manager
 - **scoop** - Command-line installer
 
+### macOS
+
+- **brew** - Homebrew (formulas and casks)
+
 **Smart Manager Selection:**
 
 Blacksmith automatically detects which package managers are available on your system and uses intelligent selection:
@@ -430,18 +434,23 @@ Blacksmith automatically detects which package managers are available on your sy
 - **OS compatibility**: Checks if the set is compatible with your OS (can be overridden with `--force`)
 - **Manager filtering**: Respects `managers_supported` to limit which managers are considered
 
-## 🍎 macOS Support (Future)
+## 🍎 macOS Support
 
-macOS support is planned for a future release. While the codebase includes some macOS compatibility (OS detection, preference stubs), full support is not yet available.
+macOS installs use **Homebrew** when `brew` is on `PATH`. Darwin is detected automatically; preferred manager order is `brew`.
 
-**Planned features for macOS:**
+**Working today:**
 
-- Homebrew package manager integration
-- MacPorts support (optional)
-- Native macOS package installation workflows
-- Full compatibility with macOS-specific tool installations
+- `BrewManager` (`shell=False` argv installs / upgrades / search)
+- Detector registers Homebrew on Darwin
+- `minimal` set includes `brew:` package IDs
 
-If you're interested in contributing macOS support, please check out our [Contributing](#-contributing) section or open an issue to discuss!
+**Still later:**
+
+- Broader brew coverage across development/cybersecurity sets
+- Optional MacPorts
+- Native brew export format
+
+Install Homebrew first: https://brew.sh
 
 ## 🎨 Pre-made Sets
 
@@ -621,7 +630,7 @@ yamllint blacksmith/sets/*.yaml
 
 To add support for a new package manager:
 
-1. Create a new file in `blacksmith/package_managers/` (e.g., `brew.py`)
+1. Create a new file in `blacksmith/package_managers/` (e.g., `macports.py`)
 2. Inherit from `PackageManager` base class in `blacksmith/package_managers/base.py`
 3. Implement required methods:
    - `is_available()` - Check if the package manager is installed

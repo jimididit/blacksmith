@@ -1,5 +1,7 @@
 """Tests for package manager detection."""
 
+from unittest.mock import patch
+
 import pytest
 
 from blacksmith.package_managers.detector import detect_available_managers, check_command
@@ -32,4 +34,22 @@ def test_manager_has_required_methods():
         assert hasattr(mgr, 'install')
         assert hasattr(mgr, 'is_installed')
         assert hasattr(mgr, 'search')
+
+
+@patch("blacksmith.package_managers.detector.is_darwin", return_value=True)
+@patch("blacksmith.package_managers.detector.is_windows", return_value=False)
+@patch("blacksmith.package_managers.detector.is_linux", return_value=False)
+@patch("blacksmith.package_managers.detector.check_command")
+def test_detect_registers_brew_on_darwin(mock_check, _linux, _windows, _darwin):
+    mock_check.side_effect = lambda cmd: cmd == "brew"
+    managers = detect_available_managers()
+    assert [m.name for m in managers] == ["brew"]
+
+
+@patch("blacksmith.package_managers.detector.is_darwin", return_value=True)
+@patch("blacksmith.package_managers.detector.is_windows", return_value=False)
+@patch("blacksmith.package_managers.detector.is_linux", return_value=False)
+@patch("blacksmith.package_managers.detector.check_command", return_value=False)
+def test_detect_empty_on_darwin_without_brew(_check, _linux, _windows, _darwin):
+    assert detect_available_managers() == []
 

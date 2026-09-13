@@ -29,6 +29,13 @@ def test_default_preferences_linux():
     assert "yum" in order
 
 
+def test_default_preferences_macos():
+    """Test default preferences for macOS / Darwin."""
+    prefs = PreferredManagerOrder()
+    assert prefs.get_preferred_order("macos") == ["brew"]
+    assert prefs.get_preferred_order("darwin") == ["brew"]
+
+
 def test_custom_preferences():
     """Test custom preferences override."""
     custom = {
