@@ -1637,14 +1637,24 @@ def uninstall(yes):
         sibling_pip_uninstall_cmds,
         try_unlock_windows_executable,
     )
-    from blacksmith.utils.pipx import pipx_package_name, should_use_pipx_uninstall
+    from blacksmith.utils.pipx import (
+        pipx_package_name,
+        pipx_uninstall_commands,
+        should_use_pipx_uninstall,
+    )
     from blacksmith.utils.safe_paths import (
         assert_safe_blacksmith_executable,
         assert_safe_blacksmith_venv,
         expected_venv_path,
     )
+    from blacksmith.utils.tty import require_tty_or_yes
 
     console.print("\n[bold red]Uninstalling Blacksmith[/bold red]\n")
+
+    tty_ok, tty_error = require_tty_or_yes(yes, dry_run=False)
+    if not tty_ok:
+        print_error(tty_error or "Non-interactive session requires --yes.")
+        sys.exit(1)
     
     if not yes:
         if not Confirm.ask("Are you sure you want to uninstall Blacksmith?", default=False):
@@ -1698,18 +1708,15 @@ def uninstall(yes):
     console.print(f"[dim]Using Python: {python_exe}[/dim]\n")
 
     # Prefer pipx when this process or the resolved entry point is pipx-managed.
+    # Do not fall through to raw pip for pipx installs (leaves orphaned pipx metadata).
     if should_use_pipx_uninstall(prefix=sys.prefix, executable=blacksmith_path):
-        pipx_bin = shutil.which("pipx")
-        pkg = pipx_package_name(sys.prefix) or "jdi-blacksmith"
-        if pipx_bin:
-            console.print(f"[dim]Detected pipx install; trying: pipx uninstall {pkg}...[/dim]")
+        pkg = pipx_package_name(prefix=sys.prefix, executable=blacksmith_path) or "jdi-blacksmith"
+        console.print(f"[dim]Detected pipx install; trying pipx uninstall ({pkg})...[/dim]")
+        last_pipx_error = None
+        for cmd in pipx_uninstall_commands(pkg, extra_packages=["jdi-blacksmith", "blacksmith"]):
             try:
-                result = subprocess.run(
-                    [pipx_bin, "uninstall", pkg],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
+                console.print(f"[dim]Trying: {' '.join(cmd)}...[/dim]")
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                 if result.returncode == 0:
                     console.print("[green][OK][/green] Successfully uninstalled via pipx")
                     console.print("\n[bold green]Blacksmith has been uninstalled.[/bold green]")
@@ -1717,35 +1724,34 @@ def uninstall(yes):
                         "[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]"
                     )
                     return
-                # Retry canonical PyPI name if venv folder name differed
-                if pkg != "jdi-blacksmith":
-                    retry = subprocess.run(
-                        [pipx_bin, "uninstall", "jdi-blacksmith"],
-                        capture_output=True,
-                        text=True,
-                        timeout=60,
-                    )
-                    if retry.returncode == 0:
-                        console.print("[green][OK][/green] Successfully uninstalled via pipx")
-                        console.print("\n[bold green]Blacksmith has been uninstalled.[/bold green]")
-                        console.print(
-                            "[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]"
-                        )
-                        return
                 err = (result.stderr or result.stdout or "").strip()
                 if err:
+                    last_pipx_error = err
                     logger.debug(f"pipx uninstall failed: {err[:200]}")
-                print_warning("pipx uninstall failed; falling back to pip methods.")
             except subprocess.TimeoutExpired:
-                print_warning("pipx uninstall timed out; falling back to pip methods.")
+                print_warning(f"pipx uninstall timed out: {' '.join(cmd)}")
             except Exception as e:
                 logger.debug(f"pipx uninstall raised: {e}")
-                print_warning("pipx uninstall failed; falling back to pip methods.")
-        else:
-            print_warning(
-                "pipx install detected but `pipx` is not on PATH; "
-                "falling back to pip methods (prefer: pipx uninstall jdi-blacksmith)."
-            )
+
+        # Deferred pipx after this process exits (helps when the shim is busy).
+        for cmd in pipx_uninstall_commands(pkg, extra_packages=["jdi-blacksmith"]):
+            if schedule_pip_uninstall(cmd):
+                console.print(
+                    "[yellow]Could not uninstall via pipx in-process; scheduled after exit.[/yellow]"
+                )
+                if last_pipx_error:
+                    print_info(f"Last pipx error: {last_pipx_error[:300]}")
+                console.print(
+                    "[dim]Wait a few seconds, then confirm with `blacksmith --version` "
+                    "or run: pipx uninstall jdi-blacksmith[/dim]"
+                )
+                return
+
+        print_error("pipx install detected but automatic pipx uninstall failed.")
+        if last_pipx_error:
+            print_info(f"Last pipx error: {last_pipx_error[:300]}")
+        print_info("Run manually: pipx uninstall jdi-blacksmith")
+        sys.exit(1)
 
     # Windows: rename running blacksmith.exe so pip can remove/replace it.
     unlocked_backup = None
@@ -1894,7 +1900,7 @@ def uninstall(yes):
             logger.debug(f"Uninstall method {method_name} raised exception: {e}")
             continue
 
-    # Last resort on Windows: finish uninstall after this process exits (file lock).
+    # Last resort: finish uninstall after this process exits (file lock / busy entry point).
     deferred_cmd = None
     sibling_cmds = sibling_pip_uninstall_cmds(
         unlocked_backup or blacksmith_path
@@ -1905,7 +1911,7 @@ def uninstall(yes):
         deferred_cmd = [python_exe, "-m", "pip", "uninstall", "jdi-blacksmith", "-y"]
     if schedule_pip_uninstall(deferred_cmd):
         console.print(
-            "[yellow]In-process uninstall failed (often because blacksmith.exe is locked).[/yellow]"
+            "[yellow]In-process uninstall failed (often because the entry point is locked).[/yellow]"
         )
         console.print(
             "[green]Scheduled pip uninstall to run after this process exits.[/green]"

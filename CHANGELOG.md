@@ -13,10 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Apply exit codes: `0` compliant, `2` changed, `1` failed
 - `blacksmith uninstall` detects pipx-managed installs and runs `pipx uninstall`
 - Windows self-uninstall: prefer Scripts\\pip.exe, unlock locked .exe, deferred pip fallback
+- Stronger pipx uninstall: shebang detect, `python -m pipx`, `~/.local/bin/pipx`, no raw-pip fallback for pipx installs
 
 ### Changed
 
 - README recommends `pipx install jdi-blacksmith` as the primary install path
+- `uninstall` requires `--yes` without a TTY
 
 ## [0.4.0] - 2026-09-12
 
