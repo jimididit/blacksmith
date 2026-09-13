@@ -1,0 +1,3 @@
+# Keep YAML portable / CI-friendly (avoid CRLF churn on Windows)
+*.yaml text eol=lf
+*.yml text eol=lf

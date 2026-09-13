@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, List, Optional
 
 import click
 import questionary
@@ -152,7 +152,7 @@ def show_sets_menu():
 
 def show_installation_summary(
     config: dict,
-    available_managers: list,
+    available_managers: List[Any],
     preferences: Optional[object] = None,
     assume_yes: bool = False,
     dry_run: bool = False,
@@ -639,8 +639,8 @@ def cli(ctx):
         show_banner()
 
 
-@cli.command()
-def list():
+@cli.command("list")
+def list_sets():
     """List available pre-made sets."""
     from blacksmith.utils.os_detector import detect_os
     
