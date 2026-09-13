@@ -1,6 +1,7 @@
 """Main CLI interface for Blacksmith."""
 
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -13,6 +14,13 @@ from blacksmith import __version__
 from blacksmith.audit.log import record_audit
 from blacksmith.config.loader import load_custom_config, load_set, list_available_sets
 from blacksmith.config.validator import validate_and_report
+from blacksmith.json_out import (
+    JSON_COMMANDS,
+    emit_error,
+    emit_ok,
+    is_json_mode,
+    run_result_data,
+)
 from blacksmith.package_managers.detector import detect_available_managers, find_manager_for_package
 from blacksmith.package_managers.results import (
     InstallRunResult,
@@ -156,6 +164,105 @@ def show_sets_menu():
     return selected
 
 
+@dataclass
+class PlanEntry:
+    """One package as the runner intends to handle it."""
+
+    package_name: str
+    package_id: str
+    manager: Optional[Any]
+    action: str  # install | skip | unavailable
+    manager_options: int = 0
+    message: Optional[str] = None
+
+
+def build_install_plan(
+    config: dict,
+    available_managers: List[Any],
+    preferences: Optional[object] = None,
+    check_installed: bool = True,
+) -> List[PlanEntry]:
+    """Resolve each package to a manager and the action it would get.
+
+    ``check_installed`` calls into the managers, so leave it off when the caller
+    only needs the manager mapping.
+    """
+    from blacksmith.utils.identifiers import validate_package_id
+
+    managers_supported = config.get("managers_supported")
+    plan: List[PlanEntry] = []
+
+    for pkg in config.get("packages", []):
+        pkg_name = pkg.get("name", "Unknown")
+        options = len(pkg.get("managers", {}))
+        manager_info = find_manager_for_package(
+            pkg,
+            available_managers,
+            preferred_order=preferences,
+            managers_supported=managers_supported,
+        )
+        if not manager_info:
+            plan.append(
+                PlanEntry(pkg_name, "", None, "unavailable", options, "no compatible manager")
+            )
+            continue
+
+        mgr, pkg_id = manager_info
+        id_ok, id_error = validate_package_id(pkg_id)
+        if not id_ok:
+            plan.append(
+                PlanEntry(
+                    pkg_name, pkg_id, mgr, "unavailable", options,
+                    id_error or "unsafe package ID",
+                )
+            )
+            continue
+
+        already = False
+        if check_installed:
+            try:
+                already = mgr.is_installed(pkg_id)
+            except Exception:
+                already = False
+
+        if already:
+            plan.append(
+                PlanEntry(pkg_name, pkg_id, mgr, "skip", options, "already installed")
+            )
+        else:
+            plan.append(PlanEntry(pkg_name, pkg_id, mgr, "install", options))
+
+    return plan
+
+
+def dry_run_result(plan: List[PlanEntry]) -> InstallRunResult:
+    """Turn a plan into the run result a dry run reports."""
+    status_for = {
+        "install": PackageStatus.OK,
+        "skip": PackageStatus.SKIPPED,
+        "unavailable": PackageStatus.FAILED,
+    }
+    outcomes = [
+        PackageOutcome(
+            entry.package_name,
+            entry.package_id,
+            entry.manager.name if entry.manager else "none",
+            entry.action,
+            status_for[entry.action],
+            message=entry.message or "planned",
+        )
+        for entry in plan
+    ]
+    return InstallRunResult(
+        ok=all(entry.action != "unavailable" for entry in plan),
+        outcomes=outcomes,
+        changed=sum(1 for entry in plan if entry.action == "install"),
+        skipped=sum(1 for entry in plan if entry.action == "skip"),
+        failed=sum(1 for entry in plan if entry.action == "unavailable"),
+        dry_run=True,
+    )
+
+
 def show_installation_summary(
     config: dict,
     available_managers: List[Any],
@@ -163,10 +270,9 @@ def show_installation_summary(
     assume_yes: bool = False,
     dry_run: bool = False,
     config_source: Optional[str] = None,
+    plan: Optional[List[PlanEntry]] = None,
 ):
     """Show what will be installed before confirmation."""
-    from blacksmith.package_managers.detector import find_manager_for_package
-
     if config_source:
         print_warning(
             "Installing from a custom config file. Treat third-party YAML as untrusted "
@@ -175,42 +281,33 @@ def show_installation_summary(
         print_info(f"Config source: {config_source}")
         console.print()
     
-    packages = config.get("packages", [])
-    managers_supported = config.get("managers_supported")
-    
+    if plan is None:
+        plan = build_install_plan(
+            config, available_managers, preferences, check_installed=dry_run
+        )
+
     rows = []
     plan_lines = []
-    for pkg in packages:
-        pkg_name = pkg.get("name", "Unknown")
-        manager_info = find_manager_for_package(
-            pkg,
-            available_managers,
-            preferred_order=preferences,
-            managers_supported=managers_supported
-        )
-        if manager_info:
-            mgr, pkg_id = manager_info
-            pkg_managers = pkg.get("managers", {})
-            if len(pkg_managers) > 1:
-                manager_display = f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"
-                manager_display += f" [dim](selected from {len(pkg_managers)} options)[/dim]"
-            else:
-                manager_display = f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"
+    for entry in plan:
+        pkg_name = entry.package_name
+        if entry.manager and entry.action != "unavailable":
+            manager_display = f"[bold #44FFD1]{entry.manager.name}[/bold #44FFD1]: {entry.package_id}"
+            if entry.manager_options > 1:
+                manager_display += f" [dim](selected from {entry.manager_options} options)[/dim]"
 
             if dry_run:
-                try:
-                    already = mgr.is_installed(pkg_id)
-                except Exception:
-                    already = False
-                action = "skip (already installed)" if already else "install"
+                action = "skip (already installed)" if entry.action == "skip" else "install"
                 rows.append([pkg_name, manager_display, action])
-                plan_lines.append(f"{action}: {pkg_name} via {mgr.name} ({pkg_id})")
+                plan_lines.append(
+                    f"{action}: {pkg_name} via {entry.manager.name} ({entry.package_id})"
+                )
             else:
                 rows.append([pkg_name, manager_display])
         else:
+            reason = entry.message or "no compatible manager"
             if dry_run:
-                rows.append([pkg_name, "[bold red]No compatible manager[/bold red]", "unavailable"])
-                plan_lines.append(f"unavailable: {pkg_name} (no compatible manager)")
+                rows.append([pkg_name, f"[bold red]{reason}[/bold red]", "unavailable"])
+                plan_lines.append(f"unavailable: {pkg_name} ({reason})")
             else:
                 rows.append([pkg_name, "[bold red]❌ No compatible manager found[/bold red]"])
     
@@ -305,8 +402,9 @@ def install_packages(
 
     tty_ok, tty_error = require_tty_or_yes(assume_yes, dry_run=dry_run)
     if not tty_ok:
-        print_error(tty_error or "Non-interactive session requires --yes or --dry-run.")
-        return InstallRunResult(ok=False)
+        message = tty_error or "Non-interactive session requires --yes or --dry-run."
+        print_error(message)
+        return InstallRunResult(ok=False, message=message)
 
     # Detect current OS
     current_os = detect_os().lower()
@@ -330,15 +428,22 @@ def install_packages(
                 print_warning(f"This set targets: {', '.join(target_os_list)}")
                 print_warning(f"Your current OS is: {current_os.capitalize()}")
                 print_error("OS mismatch. Use --force to install anyway.")
-                return InstallRunResult(ok=False)
+                return InstallRunResult(
+                    ok=False,
+                    message=(
+                        f"OS mismatch: set targets {', '.join(target_os_list)}, "
+                        f"current OS is {current_os}. Use --force to install anyway."
+                    ),
+                )
             else:
                 print_warning(f"Installing set for {', '.join(target_os_list)} on {current_os.capitalize()} (--force enabled)")
     
     available_managers = detect_available_managers()
     
     if not available_managers:
-        print_error("No package managers detected on this system.")
-        return InstallRunResult(ok=False)
+        message = "No package managers detected on this system."
+        print_error(message)
+        return InstallRunResult(ok=False, message=message)
     
     # Build preference system
     preferred_managers_config = config.get("preferred_managers")
@@ -370,6 +475,13 @@ def install_packages(
     manager_names = [mgr.name for mgr in available_managers]
     print_info(f"Detected package managers: {', '.join(manager_names)}")
     
+    # A dry run resolves the same plan the summary table renders, so build it once.
+    plan = (
+        build_install_plan(config, available_managers, preferences)
+        if dry_run
+        else None
+    )
+
     # Show summary and get confirmation (if requested)
     if show_summary:
         confirmation = show_installation_summary(
@@ -379,18 +491,18 @@ def install_packages(
             assume_yes=assume_yes,
             dry_run=dry_run,
             config_source=config_source,
+            plan=plan,
         )
         if confirmation == "back":
             return InstallRunResult(ok=True, back=True)
-        if confirmation == "dry_run":
-            return InstallRunResult(ok=True)
-        elif not confirmation:
+        if confirmation != "dry_run" and not confirmation:
             print_info("Installation cancelled.")
             return InstallRunResult(ok=False, cancelled=True)
     
     if dry_run:
-        print_info("Dry-run only. No packages will be installed.")
-        return InstallRunResult(ok=True)
+        if not show_summary:
+            print_info("Dry-run only. No packages will be installed.")
+        return dry_run_result(plan)
     
     # Sudo: system PMs only. Flatpak is a first-class Linux PM but does not use sudo.
     sudo_managers = {"apt", "pacman", "yum", "snap"}
@@ -441,11 +553,10 @@ def install_packages(
                 missing = [m for m in pkg_manager_names if m not in available_manager_names]
                 if missing:
                     print_warning(f"{pkg_name}: Required managers not available: {', '.join(missing)}")
-            if apply_mode:
-                outcomes.append(PackageOutcome(
-                    pkg_name, "", "none", "install", PackageStatus.FAILED,
-                    message="no available manager",
-                ))
+            outcomes.append(PackageOutcome(
+                pkg_name, "", "none", "install", PackageStatus.FAILED,
+                message="no available manager",
+            ))
             continue
 
         mgr, pkg_id = manager_info
@@ -453,11 +564,10 @@ def install_packages(
         if not id_ok:
             print_error(f"{pkg_name}: refusing unsafe package ID for {mgr.name}: {id_error}")
             not_found.append(pkg_name)
-            if apply_mode:
-                outcomes.append(PackageOutcome(
-                    pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
-                    message=id_error or "unsafe package ID",
-                ))
+            outcomes.append(PackageOutcome(
+                pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
+                message=id_error or "unsafe package ID",
+            ))
             continue
 
         pkg_managers = pkg.get("managers", {})
@@ -664,13 +774,212 @@ def record_self_uninstall_audit(
     )
 
 
+def reject_json_if_unsupported(ctx: click.Context, command_name: str) -> None:
+    """Exit with a stable JSON error when a command lacks JSON support."""
+    if not is_json_mode(ctx) or command_name in JSON_COMMANDS:
+        return
+    emit_error(
+        command=command_name,
+        exit_code=2,
+        code="json_unsupported",
+        message=f"JSON output is not supported for '{command_name}' in this version.",
+    )
+    sys.exit(2)
+
+
+def emit_json_run_error(
+    command: str,
+    exit_code: int,
+    code: str,
+    message: str,
+    data: Optional[dict] = None,
+) -> None:
+    """Emit a JSON error envelope for install/apply, then exit."""
+    emit_error(
+        command=command, exit_code=exit_code, code=code, message=message, data=data
+    )
+    sys.exit(exit_code)
+
+
+def require_managers_for_json(command: str) -> None:
+    """No detected manager is a diagnosable state, like it is for search."""
+    if detect_available_managers():
+        return
+    emit_json_run_error(
+        command,
+        1,
+        "no_managers",
+        "No package managers detected on this system.",
+    )
+
+
+def require_yes_for_json(command: str, assume_yes: bool, dry_run: bool) -> None:
+    """--json never prompts, so a mutate run needs --yes (or --dry-run)."""
+    if assume_yes or dry_run:
+        return
+    emit_json_run_error(
+        command,
+        2,
+        "needs_args",
+        f"'{command} --json' requires --yes (or --dry-run); prompts are disabled.",
+    )
+
+
+def load_run_config(
+    *,
+    command: str,
+    json_mode: bool,
+    set_name: Optional[str],
+    config_file: Optional[str],
+    require_signature: bool,
+    signature_file: Optional[str],
+    pubkey_file: Optional[str],
+):
+    """Resolve the config for an install/apply run.
+
+    Returns (config, config_source), or None when the user leaves the set menu.
+    Exits the process on load, signature, or missing-argument failures.
+    """
+    from blacksmith.trust.verify import verify_set_signature
+
+    if config_file:
+        if require_signature:
+            extras = [Path(pubkey_file)] if pubkey_file else None
+            sig = Path(signature_file) if signature_file else None
+            verified = verify_set_signature(
+                Path(config_file),
+                signature_path=sig,
+                extra_pubkeys=extras,
+            )
+            if not verified.ok:
+                if json_mode:
+                    emit_json_run_error(command, 1, "signature_failed", verified.message)
+                print_error(verified.message)
+                sys.exit(1)
+            print_info(verified.message)
+        config = load_custom_config(config_file)
+        if not config:
+            message = f"Failed to load config file: {config_file}"
+            if json_mode:
+                emit_json_run_error(command, 1, "invalid_config", message)
+            print_error(message)
+            sys.exit(1)
+        return config, str(config_file)
+
+    if set_name:
+        config = load_set(set_name)
+        if not config:
+            message = f"Set '{set_name}' not found."
+            if json_mode:
+                emit_json_run_error(command, 1, "not_found", message)
+            print_error(message)
+            print_info("Use 'blacksmith list' to see available sets.")
+            sys.exit(1)
+        return config, None
+
+    if json_mode:
+        emit_json_run_error(
+            command,
+            2,
+            "needs_args",
+            f"'{command} --json' needs a set name or --file; the set menu is disabled.",
+        )
+    show_welcome()
+    selected = show_sets_menu()
+    if not selected:
+        return None
+    config = load_set(selected)
+    if not config:
+        print_error(f"Failed to load set: {selected}")
+        sys.exit(1)
+    return config, None
+
+
+def emit_json_run_result(
+    *,
+    command: str,
+    result: InstallRunResult,
+    exit_code: int,
+    config: Optional[dict],
+    config_source: Optional[str],
+    dry_run: bool,
+    apply_ok_exits: bool = False,
+) -> None:
+    """Emit the JSON envelope for a finished install/apply run, then exit."""
+    data = run_result_data(
+        dry_run=dry_run,
+        set_name=config.get("name") if config else None,
+        config_path=config_source,
+        result=result,
+    )
+
+    if exit_code == 0 or (apply_ok_exits and exit_code == 2):
+        emit_ok(
+            command=command,
+            exit_code=exit_code,
+            data=data,
+            apply_ok_exits=apply_ok_exits,
+        )
+        sys.exit(exit_code)
+
+    if result.cancelled:
+        emit_json_run_error(
+            command,
+            exit_code,
+            "cancelled",
+            f"{command} was cancelled before any package changed.",
+            data=data,
+        )
+
+    failed_names = [
+        outcome.package_name
+        for outcome in result.outcomes
+        if outcome.status == PackageStatus.FAILED
+    ]
+    if failed_names:
+        message = (
+            f"{command} failed for {len(failed_names)} package(s): "
+            f"{', '.join(failed_names)}"
+        )
+    elif result.message:
+        message = f"{command} did not run: {result.message}"
+    else:
+        message = (
+            f"{command} did not run; re-run without --json to see the reason "
+            "(stderr carries the human-readable diagnostics)."
+        )
+    emit_json_run_error(command, exit_code, "install_failed", message, data=data)
+
+
 @click.group(invoke_without_command=True)
+@click.option(
+    "--json",
+    "json_mode",
+    is_flag=True,
+    help="Emit machine-readable JSON on stdout",
+)
 @click.version_option(version=__version__, prog_name="Blacksmith")
 @click.pass_context
-def cli(ctx):
+def cli(ctx: click.Context, json_mode: bool):
     """Blacksmith - Cross-platform development tool installer."""
+    ctx.ensure_object(dict)
+    ctx.obj["json"] = json_mode
+    # stdout carries the envelope only, so silence Rich for the whole run.
+    console.quiet = json_mode
+
     # If no subcommand, show interactive menu
     if ctx.invoked_subcommand is None:
+        if json_mode:
+            emit_error(
+                command="interactive",
+                exit_code=2,
+                code="json_unsupported",
+                message=(
+                    "Interactive menu is not available with --json; "
+                    "pass a command such as list or install."
+                ),
+            )
+            sys.exit(2)
         while True:
             show_welcome()
             selected = show_sets_menu()
@@ -740,19 +1049,46 @@ def cli(ctx):
                 # Otherwise continue loop to show menu again
     else:
         # Show banner for subcommands (but not for built-in click commands)
-        show_banner()
+        if not json_mode:
+            show_banner()
 
 
 @cli.command("list")
-def list_sets():
+@click.pass_context
+def list_sets(ctx: click.Context):
     """List available pre-made sets."""
-    from blacksmith.utils.os_detector import detect_os
-    
     sets = list_available_sets()
     
     if not sets:
+        if is_json_mode(ctx):
+            emit_error(
+                command="list",
+                exit_code=1,
+                code="not_found",
+                message="No pre-made sets found.",
+            )
+            sys.exit(1)
         print_error("No pre-made sets found.")
         return
+
+    if is_json_mode(ctx):
+        set_data = []
+        for set_name in sets:
+            config = load_set(set_name)
+            if config:
+                set_data.append(
+                    {
+                        "name": set_name,
+                        "description": config.get("description"),
+                        "package_count": len(config.get("packages", [])),
+                        "target_os": config.get("target_os") or [],
+                        "managers_supported": config.get("managers_supported") or [],
+                    }
+                )
+        emit_ok(command="list", exit_code=0, data={"sets": set_data})
+        return
+
+    from blacksmith.utils.os_detector import detect_os
     
     current_os = detect_os().lower()
     if current_os == "darwin":
@@ -802,8 +1138,10 @@ def list_sets():
     type=int,
     help="Show last N events",
 )
-def audit_cmd(last_n: int):
+@click.pass_context
+def audit_cmd(ctx: click.Context, last_n: int):
     """Show recent local audit log events."""
+    reject_json_if_unsupported(ctx, "audit")
     from blacksmith.audit.read import default_audit_log_path, load_events
 
     log_path = default_audit_log_path()
@@ -863,7 +1201,9 @@ def audit_cmd(last_n: int):
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
+@click.pass_context
 def install(
+    ctx: click.Context,
     set_name: Optional[str],
     config_file: Optional[str],
     skip_installed: bool,
@@ -878,58 +1218,37 @@ def install(
     no_audit: bool,
 ):
     """Install tools from a pre-made set or custom config file."""
-    from pathlib import Path
-
-    from blacksmith.trust.verify import verify_set_signature
+    json_mode = is_json_mode(ctx)
 
     if require_signature and not config_file:
-        print_error("--require-signature only applies with --file.")
+        message = "--require-signature only applies with --file."
+        if json_mode:
+            emit_json_run_error("install", 2, "needs_args", message)
+        print_error(message)
         sys.exit(1)
 
-    config = None
-    config_source = None
-    
-    if config_file:
-        if require_signature:
-            extras = [Path(pubkey_file)] if pubkey_file else None
-            sig = Path(signature_file) if signature_file else None
-            verified = verify_set_signature(
-                Path(config_file),
-                signature_path=sig,
-                extra_pubkeys=extras,
-            )
-            if not verified.ok:
-                print_error(verified.message)
-                sys.exit(1)
-            print_info(verified.message)
-        # Load custom config
-        config = load_custom_config(config_file)
-        if not config:
-            print_error(f"Failed to load config file: {config_file}")
-            sys.exit(1)
-        config_source = str(config_file)
-    elif set_name:
-        # Load pre-made set
-        config = load_set(set_name)
-        if not config:
-            print_error(f"Set '{set_name}' not found.")
-            print_info("Use 'blacksmith list' to see available sets.")
-            sys.exit(1)
-    else:
-        # Interactive mode
-        show_welcome()
-        selected = show_sets_menu()
-        if not selected:
-            return
-        config = load_set(selected)
-        if not config:
-            print_error(f"Failed to load set: {selected}")
-            sys.exit(1)
-    
+    resolved = load_run_config(
+        command="install",
+        json_mode=json_mode,
+        set_name=set_name,
+        config_file=config_file,
+        require_signature=require_signature,
+        signature_file=signature_file,
+        pubkey_file=pubkey_file,
+    )
+    if resolved is None:
+        return
+    config, config_source = resolved
+
+    if json_mode:
+        require_yes_for_json("install", assume_yes, dry_run)
+        require_managers_for_json("install")
+
     # Install packages
     result = install_packages(
         config,
         skip_installed=skip_installed,
+        show_summary=not json_mode,
         prefer_manager=prefer_manager,
         force=force,
         assume_yes=assume_yes,
@@ -947,6 +1266,15 @@ def install(
         dry_run=dry_run,
         no_audit=no_audit,
     )
+    if json_mode:
+        emit_json_run_result(
+            command="install",
+            result=result,
+            exit_code=exit_code,
+            config=config,
+            config_source=config_source,
+            dry_run=dry_run,
+        )
     sys.exit(exit_code)
 
 
@@ -962,7 +1290,9 @@ def install(
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
+@click.pass_context
 def apply(
+    ctx: click.Context,
     set_name: Optional[str],
     config_file: Optional[str],
     prefer_manager: Optional[str],
@@ -980,54 +1310,36 @@ def apply(
     Skips already-installed packages, installs missing ones, verifies after install.
     Exit codes: 0 already compliant, 2 changed with no failures, 1 failures.
     """
-    from pathlib import Path
-
-    from blacksmith.trust.verify import verify_set_signature
+    json_mode = is_json_mode(ctx)
 
     if require_signature and not config_file:
-        print_error("--require-signature only applies with --file.")
+        message = "--require-signature only applies with --file."
+        if json_mode:
+            emit_json_run_error("apply", 2, "needs_args", message)
+        print_error(message)
         sys.exit(1)
 
-    config = None
-    config_source = None
+    resolved = load_run_config(
+        command="apply",
+        json_mode=json_mode,
+        set_name=set_name,
+        config_file=config_file,
+        require_signature=require_signature,
+        signature_file=signature_file,
+        pubkey_file=pubkey_file,
+    )
+    if resolved is None:
+        return
+    config, config_source = resolved
 
-    if config_file:
-        if require_signature:
-            extras = [Path(pubkey_file)] if pubkey_file else None
-            sig = Path(signature_file) if signature_file else None
-            verified = verify_set_signature(
-                Path(config_file),
-                signature_path=sig,
-                extra_pubkeys=extras,
-            )
-            if not verified.ok:
-                print_error(verified.message)
-                sys.exit(1)
-            print_info(verified.message)
-        config = load_custom_config(config_file)
-        if not config:
-            print_error(f"Failed to load config file: {config_file}")
-            sys.exit(1)
-        config_source = str(config_file)
-    elif set_name:
-        config = load_set(set_name)
-        if not config:
-            print_error(f"Set '{set_name}' not found.")
-            print_info("Use 'blacksmith list' to see available sets.")
-            sys.exit(1)
-    else:
-        show_welcome()
-        selected = show_sets_menu()
-        if not selected:
-            return
-        config = load_set(selected)
-        if not config:
-            print_error(f"Failed to load set: {selected}")
-            sys.exit(1)
+    if json_mode:
+        require_yes_for_json("apply", assume_yes, dry_run)
+        require_managers_for_json("apply")
 
     result = install_packages(
         config,
         skip_installed=True,
+        show_summary=not json_mode,
         prefer_manager=prefer_manager,
         force=force,
         assume_yes=assume_yes,
@@ -1046,6 +1358,16 @@ def apply(
         dry_run=dry_run,
         no_audit=no_audit,
     )
+    if json_mode:
+        emit_json_run_result(
+            command="apply",
+            result=result,
+            exit_code=exit_code,
+            config=config,
+            config_source=config_source,
+            dry_run=dry_run,
+            apply_ok_exits=True,
+        )
     sys.exit(exit_code)
 
 
@@ -1056,8 +1378,10 @@ def apply(
               type=click.Choice(["winget", "choco", "chocolatey", "apt", "pacman", "scoop"], case_sensitive=False),
               help="Export format: winget, choco/chocolatey, apt, pacman, or scoop")
 @click.option("--output", "-o", "output_file", help="Output file path")
-def export(set_name: Optional[str], config_file: Optional[str], export_format: Optional[str], output_file: Optional[str]):
+@click.pass_context
+def export(ctx: click.Context, set_name: Optional[str], config_file: Optional[str], export_format: Optional[str], output_file: Optional[str]):
     """Export a set to native package manager format."""
+    reject_json_if_unsupported(ctx, "export")
     from blacksmith.config.loader import load_set, load_custom_config
     from blacksmith.export import (
         WingetExporter, ChocolateyExporter, AptExporter,
@@ -1146,21 +1470,48 @@ def export(set_name: Optional[str], config_file: Optional[str], export_format: O
 @cli.command()
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", type=click.Path(exists=True), help="Path to custom config file")
-def info(set_name: Optional[str], config_file: Optional[str]):
+@click.pass_context
+def info(ctx: click.Context, set_name: Optional[str], config_file: Optional[str]):
     """Show detailed information about a set."""
     from blacksmith.config.loader import load_set, load_custom_config
     from blacksmith.utils.os_detector import detect_os
+
+    json_mode = is_json_mode(ctx)
+    if json_mode and not set_name and not config_file:
+        emit_error(
+            command="info",
+            exit_code=2,
+            code="needs_args",
+            message="Provide a set name or --file.",
+        )
+        sys.exit(2)
     
     # Load config
     config = None
     if config_file:
         config = load_custom_config(config_file)
         if not config:
+            if json_mode:
+                emit_error(
+                    command="info",
+                    exit_code=1,
+                    code="not_found",
+                    message=f"Failed to load config file: {config_file}",
+                )
+                sys.exit(1)
             print_error(f"Failed to load config file: {config_file}")
             sys.exit(1)
     elif set_name:
         config = load_set(set_name)
         if not config:
+            if json_mode:
+                emit_error(
+                    command="info",
+                    exit_code=1,
+                    code="not_found",
+                    message=f"Set '{set_name}' not found.",
+                )
+                sys.exit(1)
             print_error(f"Set '{set_name}' not found.")
             print_info("Use 'blacksmith list' to see available sets.")
             sys.exit(1)
@@ -1174,6 +1525,31 @@ def info(set_name: Optional[str], config_file: Optional[str]):
         if not config:
             print_error(f"Failed to load set: {selected}")
             sys.exit(1)
+
+    if json_mode:
+        packages = [
+            {
+                "name": package.get("name"),
+                "managers": package.get("managers") or {},
+            }
+            for package in config.get("packages", [])
+        ]
+        emit_ok(
+            command="info",
+            exit_code=0,
+            data={
+                "name": config.get("name"),
+                "description": config.get("description"),
+                "config_path": (
+                    str(Path(config_file).resolve()) if config_file else None
+                ),
+                "target_os": config.get("target_os") or [],
+                "preferred_managers": config.get("preferred_managers") or {},
+                "managers_supported": config.get("managers_supported") or [],
+                "packages": packages,
+            },
+        )
+        return
     
     # Display set information
     console.print()
@@ -1247,8 +1623,10 @@ def info(set_name: Optional[str], config_file: Optional[str]):
 
 @cli.command()
 @click.argument("config_path", type=click.Path(exists=True))
-def validate(config_path: str):
+@click.pass_context
+def validate(ctx: click.Context, config_path: str):
     """Validate a configuration file."""
+    reject_json_if_unsupported(ctx, "validate")
     from blacksmith.config.parser import load_yaml
     
     try:
@@ -1268,8 +1646,89 @@ def validate(config_path: str):
 @click.argument("query", required=False)
 @click.option("--manager", "-m", help="Filter by specific package manager")
 @click.option("--limit", "-l", default=10, help="Maximum number of results")
-def search(query: Optional[str], manager: Optional[str], limit: int):
+@click.pass_context
+def search(
+    ctx: click.Context, query: Optional[str], manager: Optional[str], limit: int
+):
     """Search for packages across available package managers."""
+    if is_json_mode(ctx):
+        if not query:
+            emit_error(
+                command="search",
+                exit_code=2,
+                code="needs_args",
+                message="Search query is required with --json.",
+            )
+            sys.exit(2)
+
+        from blacksmith.utils.identifiers import validate_search_query
+
+        query_ok, query_error = validate_search_query(query)
+        if not query_ok:
+            emit_error(
+                command="search",
+                exit_code=2,
+                code="invalid_query",
+                message=query_error or "Invalid search query",
+            )
+            sys.exit(2)
+
+        available_managers = detect_available_managers()
+        if manager:
+            manager_aliases = {
+                "choco": "chocolatey",
+                "dnf": "yum",
+                "homebrew": "brew",
+            }
+            canonical_name = manager_aliases.get(manager.lower(), manager.lower())
+            available_managers = [
+                mgr
+                for mgr in available_managers
+                if mgr.name.lower() == canonical_name
+            ]
+
+        if not available_managers:
+            emit_error(
+                command="search",
+                exit_code=1,
+                code="no_managers",
+                message="No matching package managers detected on this system.",
+            )
+            sys.exit(1)
+
+        result_groups = []
+        notes = []
+        for mgr in available_managers:
+            packages = mgr.search(query, limit=limit)
+            if packages:
+                result_groups.append(
+                    {
+                        "manager": mgr.name,
+                        "packages": [
+                            {
+                                "name": package.get("name"),
+                                "id": package.get("id"),
+                                "description": package.get("description"),
+                            }
+                            for package in packages
+                        ],
+                    }
+                )
+            elif mgr.name in ("snap", "flatpak"):
+                notes.append(f"{mgr.name} search is not implemented")
+
+        emit_ok(
+            command="search",
+            exit_code=0,
+            data={
+                "query": query,
+                "limit": limit,
+                "results": result_groups,
+                "notes": notes,
+            },
+        )
+        return
+
     available_managers = detect_available_managers()
     
     if not available_managers:
@@ -1379,8 +1838,10 @@ def search(query: Optional[str], manager: Optional[str], limit: int):
 
 @cli.command()
 @click.option("--advanced", is_flag=True, help="Advanced mode: single-manager sets only")
-def create(advanced: bool):
+@click.pass_context
+def create(ctx: click.Context, advanced: bool):
     """Interactively create a new tool set."""
+    reject_json_if_unsupported(ctx, "create")
     print_panel("Create New Set", "This will guide you through creating a custom tool set.")
     
     name = questionary.text("Set name:").ask()
@@ -1821,8 +2282,10 @@ def create(advanced: bool):
 @cli.command()
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
-def uninstall(yes, no_audit):
+@click.pass_context
+def uninstall(ctx: click.Context, yes, no_audit):
     """Uninstall Blacksmith itself."""
+    reject_json_if_unsupported(ctx, "uninstall")
     import os
     import shutil
     import subprocess

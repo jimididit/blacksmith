@@ -40,6 +40,7 @@
 - Multiple package managers on Linux, Windows, and macOS - see [Package managers](#package-managers)
 - Smart manager selection with OS preferences and fallback
 - Automation flags: `--yes`, `--dry-run`, `--fail-fast` - see [Commands](#commands)
+- Machine-readable output: global `--json` for scripting - see [Machine-readable output](#machine-readable-output)
 - Package ID allowlist for argv safety (not upstream existence or content trust) - see [Trust](#trust)
 - Export to native manager formats - see [Commands](#commands)
 
@@ -134,6 +135,61 @@ Signature flags (with `--file`): `--require-signature`, `--signature PATH`, `--p
 **Privileges:** on Linux, apt / pacman / yum|dnf / snap may prompt for sudo. Flatpak and Homebrew do not use that path.
 
 **Search note:** Snap and Flatpak support install, but `search` does not query them yet.
+
+### Machine-readable output
+
+Pass `--json` on supported commands to emit a single JSON object on stdout. Human banners, tables, and prompts are suppressed; diagnostics may appear on stderr.
+
+Supported commands: `list`, `info`, `search`, `install`, `apply`. All other commands (including the bare interactive menu) emit a failure envelope with `error.code` `json_unsupported` and exit `2`.
+
+Every envelope includes `schema_version` (currently `1`). Consumers should ignore unknown fields.
+
+Success envelope:
+
+```json
+{
+  "schema_version": 1,
+  "command": "list",
+  "ok": true,
+  "exit": 0,
+  "data": { }
+}
+```
+
+Failure envelope:
+
+```json
+{
+  "schema_version": 1,
+  "command": "install",
+  "ok": false,
+  "exit": 1,
+  "error": { "code": "not_found", "message": "Set 'nope' not found." }
+}
+```
+
+Install and apply failure envelopes may also include a `data` block with `summary` and `outcomes` so scripts can act on partial runs. Treat this as additive; other failure shapes omit `data`.
+
+Examples:
+
+```bash
+blacksmith --json list | jq '.data.sets[].name'
+blacksmith --json info minimal | jq '.data.packages | length'
+blacksmith --json search git --limit 5 | jq '.data.results[].manager'
+blacksmith --json install minimal --yes --dry-run | jq '.data.outcomes[] | select(.action=="install")'
+blacksmith --json apply minimal --yes | jq '{ok, exit, changed: .data.summary.changed}'
+```
+
+Mutating commands under `--json` require `--yes` or `--dry-run` (prompts are disabled). A set name or `--file` is also required; the interactive set menu is unavailable.
+
+```bash
+blacksmith --json install --file path/to/set.yaml --yes
+blacksmith --json apply --file path/to/set.yaml --dry-run
+```
+
+Apply exit codes in JSON mode match human mode: `0` already compliant, `2` changed with no failures, `1` failures. On exit `2`, the envelope has `ok: true` (the run succeeded; state changed).
+
+Common `error.code` values: `json_unsupported`, `needs_args`, `not_found`, `invalid_query`, `no_managers`, `invalid_config`, `signature_failed`, `cancelled`, `install_failed`.
 
 ### Audit
 

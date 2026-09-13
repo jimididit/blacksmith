@@ -36,6 +36,8 @@ class InstallRunResult:
     failed: int = 0
     cancelled: bool = False
     back: bool = False
+    dry_run: bool = False
+    message: Optional[str] = None
 
     def exit_code_install(self) -> int:
         """Legacy install semantics: 0 success, 1 failure/cancel."""
@@ -43,6 +45,8 @@ class InstallRunResult:
             return 0
         if self.cancelled:
             return 1
+        if self.dry_run:
+            return 0
         return 0 if self.ok else 1
 
     def exit_code_apply(self) -> int:
@@ -54,7 +58,12 @@ class InstallRunResult:
         """
         if self.back:
             return 0
-        if self.cancelled or self.failed or not self.ok:
+        if self.cancelled:
+            return 1
+        # A plan changes nothing, so counters must not turn into a "changed" exit.
+        if self.dry_run:
+            return 0
+        if self.failed or not self.ok:
             return 1
         if self.changed:
             return 2

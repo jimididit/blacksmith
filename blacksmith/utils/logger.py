@@ -24,8 +24,8 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     # Remove existing handlers
     logger.handlers.clear()
     
-    # Add Rich handler
-    console = Console()
+    # Add Rich handler. Logs go to stderr so stdout stays usable for payloads.
+    console = Console(stderr=True)
     handler = RichHandler(console=console, rich_tracebacks=True)
     handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
     logger.addHandler(handler)
