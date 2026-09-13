@@ -339,7 +339,7 @@ jobs:
 
       - name: Create GitHub Release (with custom notes)
         if: steps.check_notes.outputs.use_custom == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: Blacksmith ${{ github.ref_name }}
@@ -350,7 +350,7 @@ jobs:
 
       - name: Create GitHub Release (with generated notes)
         if: steps.check_notes.outputs.use_custom == 'false'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: Blacksmith ${{ github.ref_name }}
