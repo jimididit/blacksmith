@@ -13,7 +13,13 @@ from blacksmith import __version__
 from blacksmith.audit.log import record_audit
 from blacksmith.config.loader import load_custom_config, load_set, list_available_sets
 from blacksmith.config.validator import validate_and_report
-from blacksmith.json_out import JSON_COMMANDS, emit_error, emit_ok, is_json_mode
+from blacksmith.json_out import (
+    JSON_COMMANDS,
+    emit_error,
+    emit_ok,
+    is_json_mode,
+    run_result_data,
+)
 from blacksmith.package_managers.detector import detect_available_managers, find_manager_for_package
 from blacksmith.package_managers.results import (
     InstallRunResult,
@@ -678,6 +684,145 @@ def reject_json_if_unsupported(ctx: click.Context, command_name: str) -> None:
     sys.exit(2)
 
 
+def emit_json_run_error(command: str, exit_code: int, code: str, message: str) -> None:
+    """Emit a JSON error envelope for install/apply, then exit."""
+    emit_error(command=command, exit_code=exit_code, code=code, message=message)
+    sys.exit(exit_code)
+
+
+def require_yes_for_json(command: str, assume_yes: bool, dry_run: bool) -> None:
+    """--json never prompts, so a mutate run needs --yes (or --dry-run)."""
+    if assume_yes or dry_run:
+        return
+    emit_json_run_error(
+        command,
+        2,
+        "needs_args",
+        f"'{command} --json' requires --yes (or --dry-run); prompts are disabled.",
+    )
+
+
+def load_run_config(
+    *,
+    command: str,
+    json_mode: bool,
+    set_name: Optional[str],
+    config_file: Optional[str],
+    require_signature: bool,
+    signature_file: Optional[str],
+    pubkey_file: Optional[str],
+):
+    """Resolve the config for an install/apply run.
+
+    Returns (config, config_source), or None when the user leaves the set menu.
+    Exits the process on load, signature, or missing-argument failures.
+    """
+    from blacksmith.trust.verify import verify_set_signature
+
+    if config_file:
+        if require_signature:
+            extras = [Path(pubkey_file)] if pubkey_file else None
+            sig = Path(signature_file) if signature_file else None
+            verified = verify_set_signature(
+                Path(config_file),
+                signature_path=sig,
+                extra_pubkeys=extras,
+            )
+            if not verified.ok:
+                if json_mode:
+                    emit_json_run_error(command, 1, "signature_failed", verified.message)
+                print_error(verified.message)
+                sys.exit(1)
+            print_info(verified.message)
+        config = load_custom_config(config_file)
+        if not config:
+            message = f"Failed to load config file: {config_file}"
+            if json_mode:
+                emit_json_run_error(command, 1, "invalid_config", message)
+            print_error(message)
+            sys.exit(1)
+        return config, str(config_file)
+
+    if set_name:
+        config = load_set(set_name)
+        if not config:
+            message = f"Set '{set_name}' not found."
+            if json_mode:
+                emit_json_run_error(command, 1, "not_found", message)
+            print_error(message)
+            print_info("Use 'blacksmith list' to see available sets.")
+            sys.exit(1)
+        return config, None
+
+    if json_mode:
+        emit_json_run_error(
+            command,
+            2,
+            "needs_args",
+            f"'{command} --json' needs a set name or --file; the set menu is disabled.",
+        )
+    show_welcome()
+    selected = show_sets_menu()
+    if not selected:
+        return None
+    config = load_set(selected)
+    if not config:
+        print_error(f"Failed to load set: {selected}")
+        sys.exit(1)
+    return config, None
+
+
+def emit_json_run_result(
+    *,
+    command: str,
+    result: InstallRunResult,
+    exit_code: int,
+    config: Optional[dict],
+    config_source: Optional[str],
+    dry_run: bool,
+    apply_ok_exits: bool = False,
+) -> None:
+    """Emit the JSON envelope for a finished install/apply run, then exit."""
+    if exit_code == 0 or (apply_ok_exits and exit_code == 2):
+        emit_ok(
+            command=command,
+            exit_code=exit_code,
+            data=run_result_data(
+                dry_run=dry_run,
+                set_name=config.get("name") if config else None,
+                config_path=config_source,
+                result=result,
+            ),
+            apply_ok_exits=apply_ok_exits,
+        )
+        sys.exit(exit_code)
+
+    if result.cancelled:
+        emit_json_run_error(
+            command,
+            exit_code,
+            "cancelled",
+            f"{command} was cancelled before any package changed.",
+        )
+
+    failed_names = [
+        outcome.package_name
+        for outcome in result.outcomes
+        if outcome.status == PackageStatus.FAILED
+    ]
+    if failed_names:
+        message = (
+            f"{command} failed for {len(failed_names)} package(s): "
+            f"{', '.join(failed_names)}"
+        )
+    else:
+        message = (
+            f"{command} did not run; re-run without --json to see the reason "
+            "(for example OS mismatch or no package managers detected)."
+        )
+    emit_json_run_error(command, exit_code, "install_failed", message)
+
+
 @click.group(invoke_without_command=True)
 @click.option(
     "--json",
@@ -691,6 +836,8 @@ def cli(ctx: click.Context, json_mode: bool):
     """Blacksmith - Cross-platform development tool installer."""
     ctx.ensure_object(dict)
     ctx.obj["json"] = json_mode
+    # stdout carries the envelope only, so silence Rich for the whole run.
+    console.quiet = json_mode
 
     # If no subcommand, show interactive menu
     if ctx.invoked_subcommand is None:
@@ -926,7 +1073,9 @@ def audit_cmd(ctx: click.Context, last_n: int):
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
+@click.pass_context
 def install(
+    ctx: click.Context,
     set_name: Optional[str],
     config_file: Optional[str],
     skip_installed: bool,
@@ -941,58 +1090,36 @@ def install(
     no_audit: bool,
 ):
     """Install tools from a pre-made set or custom config file."""
-    from pathlib import Path
-
-    from blacksmith.trust.verify import verify_set_signature
+    json_mode = is_json_mode(ctx)
 
     if require_signature and not config_file:
-        print_error("--require-signature only applies with --file.")
+        message = "--require-signature only applies with --file."
+        if json_mode:
+            emit_json_run_error("install", 2, "needs_args", message)
+        print_error(message)
         sys.exit(1)
 
-    config = None
-    config_source = None
-    
-    if config_file:
-        if require_signature:
-            extras = [Path(pubkey_file)] if pubkey_file else None
-            sig = Path(signature_file) if signature_file else None
-            verified = verify_set_signature(
-                Path(config_file),
-                signature_path=sig,
-                extra_pubkeys=extras,
-            )
-            if not verified.ok:
-                print_error(verified.message)
-                sys.exit(1)
-            print_info(verified.message)
-        # Load custom config
-        config = load_custom_config(config_file)
-        if not config:
-            print_error(f"Failed to load config file: {config_file}")
-            sys.exit(1)
-        config_source = str(config_file)
-    elif set_name:
-        # Load pre-made set
-        config = load_set(set_name)
-        if not config:
-            print_error(f"Set '{set_name}' not found.")
-            print_info("Use 'blacksmith list' to see available sets.")
-            sys.exit(1)
-    else:
-        # Interactive mode
-        show_welcome()
-        selected = show_sets_menu()
-        if not selected:
-            return
-        config = load_set(selected)
-        if not config:
-            print_error(f"Failed to load set: {selected}")
-            sys.exit(1)
-    
+    resolved = load_run_config(
+        command="install",
+        json_mode=json_mode,
+        set_name=set_name,
+        config_file=config_file,
+        require_signature=require_signature,
+        signature_file=signature_file,
+        pubkey_file=pubkey_file,
+    )
+    if resolved is None:
+        return
+    config, config_source = resolved
+
+    if json_mode:
+        require_yes_for_json("install", assume_yes, dry_run)
+
     # Install packages
     result = install_packages(
         config,
         skip_installed=skip_installed,
+        show_summary=not json_mode,
         prefer_manager=prefer_manager,
         force=force,
         assume_yes=assume_yes,
@@ -1010,6 +1137,15 @@ def install(
         dry_run=dry_run,
         no_audit=no_audit,
     )
+    if json_mode:
+        emit_json_run_result(
+            command="install",
+            result=result,
+            exit_code=exit_code,
+            config=config,
+            config_source=config_source,
+            dry_run=dry_run,
+        )
     sys.exit(exit_code)
 
 
@@ -1025,7 +1161,9 @@ def install(
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
+@click.pass_context
 def apply(
+    ctx: click.Context,
     set_name: Optional[str],
     config_file: Optional[str],
     prefer_manager: Optional[str],
@@ -1043,54 +1181,35 @@ def apply(
     Skips already-installed packages, installs missing ones, verifies after install.
     Exit codes: 0 already compliant, 2 changed with no failures, 1 failures.
     """
-    from pathlib import Path
-
-    from blacksmith.trust.verify import verify_set_signature
+    json_mode = is_json_mode(ctx)
 
     if require_signature and not config_file:
-        print_error("--require-signature only applies with --file.")
+        message = "--require-signature only applies with --file."
+        if json_mode:
+            emit_json_run_error("apply", 2, "needs_args", message)
+        print_error(message)
         sys.exit(1)
 
-    config = None
-    config_source = None
+    resolved = load_run_config(
+        command="apply",
+        json_mode=json_mode,
+        set_name=set_name,
+        config_file=config_file,
+        require_signature=require_signature,
+        signature_file=signature_file,
+        pubkey_file=pubkey_file,
+    )
+    if resolved is None:
+        return
+    config, config_source = resolved
 
-    if config_file:
-        if require_signature:
-            extras = [Path(pubkey_file)] if pubkey_file else None
-            sig = Path(signature_file) if signature_file else None
-            verified = verify_set_signature(
-                Path(config_file),
-                signature_path=sig,
-                extra_pubkeys=extras,
-            )
-            if not verified.ok:
-                print_error(verified.message)
-                sys.exit(1)
-            print_info(verified.message)
-        config = load_custom_config(config_file)
-        if not config:
-            print_error(f"Failed to load config file: {config_file}")
-            sys.exit(1)
-        config_source = str(config_file)
-    elif set_name:
-        config = load_set(set_name)
-        if not config:
-            print_error(f"Set '{set_name}' not found.")
-            print_info("Use 'blacksmith list' to see available sets.")
-            sys.exit(1)
-    else:
-        show_welcome()
-        selected = show_sets_menu()
-        if not selected:
-            return
-        config = load_set(selected)
-        if not config:
-            print_error(f"Failed to load set: {selected}")
-            sys.exit(1)
+    if json_mode:
+        require_yes_for_json("apply", assume_yes, dry_run)
 
     result = install_packages(
         config,
         skip_installed=True,
+        show_summary=not json_mode,
         prefer_manager=prefer_manager,
         force=force,
         assume_yes=assume_yes,
@@ -1109,6 +1228,16 @@ def apply(
         dry_run=dry_run,
         no_audit=no_audit,
     )
+    if json_mode:
+        emit_json_run_result(
+            command="apply",
+            result=result,
+            exit_code=exit_code,
+            config=config,
+            config_source=config_source,
+            dry_run=dry_run,
+            apply_ok_exits=True,
+        )
     sys.exit(exit_code)
 
 
