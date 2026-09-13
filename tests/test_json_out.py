@@ -95,3 +95,38 @@ def test_json_bare_cli_no_interactive():
     assert body["ok"] is False
     assert body["error"]["code"] == "json_unsupported"
     assert body["command"] == "interactive"
+
+
+def test_json_list_includes_minimal():
+    result = CliRunner().invoke(cli, ["--json", "list"])
+
+    assert result.exit_code == 0
+    body = _parse_cli_json(result)
+    assert body["ok"] is True
+    minimal = next(item for item in body["data"]["sets"] if item["name"] == "minimal")
+    assert set(minimal) == {
+        "name",
+        "description",
+        "package_count",
+        "target_os",
+        "managers_supported",
+    }
+
+
+def test_json_info_minimal_has_packages():
+    result = CliRunner().invoke(cli, ["--json", "info", "minimal"])
+
+    assert result.exit_code == 0
+    body = _parse_cli_json(result)
+    assert body["command"] == "info"
+    assert body["data"]["config_path"] is None
+    assert isinstance(body["data"]["packages"], list)
+    assert len(body["data"]["packages"]) >= 1
+    assert set(body["data"]["packages"][0]) == {"name", "managers"}
+
+
+def test_json_info_needs_args():
+    result = CliRunner().invoke(cli, ["--json", "info"])
+
+    assert result.exit_code == 2
+    assert _parse_cli_json(result)["error"]["code"] == "needs_args"

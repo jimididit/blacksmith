@@ -13,7 +13,7 @@ from blacksmith import __version__
 from blacksmith.audit.log import record_audit
 from blacksmith.config.loader import load_custom_config, load_set, list_available_sets
 from blacksmith.config.validator import validate_and_report
-from blacksmith.json_out import JSON_COMMANDS, emit_error, is_json_mode
+from blacksmith.json_out import JSON_COMMANDS, emit_error, emit_ok, is_json_mode
 from blacksmith.package_managers.detector import detect_available_managers, find_manager_for_package
 from blacksmith.package_managers.results import (
     InstallRunResult,
@@ -778,15 +778,41 @@ def cli(ctx: click.Context, json_mode: bool):
 
 
 @cli.command("list")
-def list_sets():
+@click.pass_context
+def list_sets(ctx: click.Context):
     """List available pre-made sets."""
-    from blacksmith.utils.os_detector import detect_os
-    
     sets = list_available_sets()
     
     if not sets:
+        if is_json_mode(ctx):
+            emit_error(
+                command="list",
+                exit_code=1,
+                code="not_found",
+                message="No pre-made sets found.",
+            )
+            sys.exit(1)
         print_error("No pre-made sets found.")
         return
+
+    if is_json_mode(ctx):
+        set_data = []
+        for set_name in sets:
+            config = load_set(set_name)
+            if config:
+                set_data.append(
+                    {
+                        "name": set_name,
+                        "description": config.get("description"),
+                        "package_count": len(config.get("packages", [])),
+                        "target_os": config.get("target_os") or [],
+                        "managers_supported": config.get("managers_supported") or [],
+                    }
+                )
+        emit_ok(command="list", exit_code=0, data={"sets": set_data})
+        return
+
+    from blacksmith.utils.os_detector import detect_os
     
     current_os = detect_os().lower()
     if current_os == "darwin":
@@ -1184,21 +1210,48 @@ def export(ctx: click.Context, set_name: Optional[str], config_file: Optional[st
 @cli.command()
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", type=click.Path(exists=True), help="Path to custom config file")
-def info(set_name: Optional[str], config_file: Optional[str]):
+@click.pass_context
+def info(ctx: click.Context, set_name: Optional[str], config_file: Optional[str]):
     """Show detailed information about a set."""
     from blacksmith.config.loader import load_set, load_custom_config
     from blacksmith.utils.os_detector import detect_os
+
+    json_mode = is_json_mode(ctx)
+    if json_mode and not set_name and not config_file:
+        emit_error(
+            command="info",
+            exit_code=2,
+            code="needs_args",
+            message="Provide a set name or --file.",
+        )
+        sys.exit(2)
     
     # Load config
     config = None
     if config_file:
         config = load_custom_config(config_file)
         if not config:
+            if json_mode:
+                emit_error(
+                    command="info",
+                    exit_code=1,
+                    code="not_found",
+                    message=f"Failed to load config file: {config_file}",
+                )
+                sys.exit(1)
             print_error(f"Failed to load config file: {config_file}")
             sys.exit(1)
     elif set_name:
         config = load_set(set_name)
         if not config:
+            if json_mode:
+                emit_error(
+                    command="info",
+                    exit_code=1,
+                    code="not_found",
+                    message=f"Set '{set_name}' not found.",
+                )
+                sys.exit(1)
             print_error(f"Set '{set_name}' not found.")
             print_info("Use 'blacksmith list' to see available sets.")
             sys.exit(1)
@@ -1212,6 +1265,31 @@ def info(set_name: Optional[str], config_file: Optional[str]):
         if not config:
             print_error(f"Failed to load set: {selected}")
             sys.exit(1)
+
+    if json_mode:
+        packages = [
+            {
+                "name": package.get("name"),
+                "managers": package.get("managers") or {},
+            }
+            for package in config.get("packages", [])
+        ]
+        emit_ok(
+            command="info",
+            exit_code=0,
+            data={
+                "name": config.get("name"),
+                "description": config.get("description"),
+                "config_path": (
+                    str(Path(config_file).resolve()) if config_file else None
+                ),
+                "target_os": config.get("target_os") or [],
+                "preferred_managers": config.get("preferred_managers") or {},
+                "managers_supported": config.get("managers_supported") or [],
+                "packages": packages,
+            },
+        )
+        return
     
     # Display set information
     console.print()
