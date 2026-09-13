@@ -33,6 +33,7 @@ ENV/
 .cursorIgnore
 .cursorindexingignore
 .specstory/
+/graphify-out/
 *.swp
 *.swo
 *~
@@ -49,3 +50,8 @@ Thumbs.db
 # Internal
 docs/
 logs/
+ROADMAP.md
+AUDIT_REPORT.md
+
+# Local lock experiments (pinning tracked separately when adopted)
+uv.lock

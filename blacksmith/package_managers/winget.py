@@ -25,7 +25,6 @@ class WingetManager(PackageManager):
                 capture_output=True,
                 text=True,
                 timeout=5,
-                shell=True
             )
             return result.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -48,7 +47,6 @@ class WingetManager(PackageManager):
                     capture_output=True,
                     text=True,
                     timeout=10,
-                    shell=True
                 )
                 
                 if verify_result.returncode != 0 or package not in verify_result.stdout:
@@ -65,7 +63,6 @@ class WingetManager(PackageManager):
                     capture_output=True,
                     text=True,
                     timeout=600,
-                    shell=True
                 )
                 
                 if result.returncode != 0:
@@ -112,7 +109,6 @@ class WingetManager(PackageManager):
                 capture_output=True,
                 text=True,
                 timeout=10,
-                shell=True
             )
             return result.returncode == 0 and package in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -127,7 +123,6 @@ class WingetManager(PackageManager):
                 capture_output=True,
                 text=True,
                 timeout=600,
-                shell=True
             )
             if result.returncode != 0:
                 error_msg = result.stderr.strip() or result.stdout.strip()
@@ -158,7 +153,6 @@ class WingetManager(PackageManager):
                 encoding='utf-8',
                 errors='replace',  # Replace invalid characters instead of failing
                 timeout=30,
-                shell=True
             )
             
             if result.returncode != 0:
