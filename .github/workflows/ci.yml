@@ -178,12 +178,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install pip-audit bandit
 
-      - name: pip-audit dependencies
-        run: pip-audit -r requirements.txt
+      - name: pip-audit locked dependencies
+        run: pip-audit -r requirements.lock
 
       - name: Bandit (medium+ severity)
         run: |
-          pip install -r requirements.txt
+          pip install -r requirements.lock
           bandit -r blacksmith/ -ll
 
   # Build Package
