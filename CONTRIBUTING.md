@@ -30,6 +30,21 @@ pytest tests/ -v
 # (also enforced in CI trust-gate job)
 ```
 
+## Dependency lockfile
+
+Runtime deps are ranged in `requirements.txt` and pinned in `requirements.lock`
+(generated with [pip-tools](https://github.com/jazzband/pip-tools)).
+
+Regenerate after changing `requirements.txt`:
+
+```bash
+pip install pip-tools
+pip-compile --output-file=requirements.lock requirements.txt
+```
+
+CI runs `pip-audit -r requirements.lock` so the audited tree matches what we pin.
+Install from the lock for reproducible local audits: `pip install -r requirements.lock`.
+
 ## CI expectations
 
 The workflow runs on pull requests to `main` (and `develop` if used). The aggregator job **CI** must succeed. It requires:

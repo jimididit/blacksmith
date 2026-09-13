@@ -1439,353 +1439,194 @@ def create(advanced: bool):
 
 @cli.command()
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def uninstall(yes: bool):
-    """Uninstall Blacksmith from your system."""
-    import subprocess
+def uninstall(yes):
+    """Uninstall Blacksmith itself."""
     import shutil
     import sys
-    import os
-    import tempfile
-    import time
-    
-    def create_cleanup_script(target_file: str) -> str:
-        """
-        Create a temporary script that will delete the target file and itself.
-        Returns the path to the created script.
-        """
-        if os.name == 'nt':  # Windows
-            # Create a PowerShell script
-            script_content = f"""
-# Wait for the process to fully exit
-Start-Sleep -Seconds 2
+    from pathlib import Path
 
-# Try to delete the target file
-$target = '{target_file}'
-if (Test-Path $target) {{
-    try {{
-        Remove-Item $target -Force -ErrorAction Stop
-        Write-Host "Deleted: $target"
-    }} catch {{
-        Write-Host "Could not delete: $target"
-        Write-Host "Error: $_"
-    }}
-}}
+    from blacksmith.utils.deferred_delete import (
+        remove_file_now,
+        remove_venv_now,
+        schedule_delete_file,
+        schedule_delete_venv,
+    )
+    from blacksmith.utils.safe_paths import (
+        assert_safe_blacksmith_executable,
+        assert_safe_blacksmith_venv,
+        expected_venv_path,
+    )
 
-# Delete this script itself
-$scriptPath = $MyInvocation.MyCommand.Path
-Start-Sleep -Seconds 1
-if (Test-Path $scriptPath) {{
-    Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
-}}
-"""
-            # Create temp PowerShell script
-            fd, script_path = tempfile.mkstemp(suffix='.ps1', prefix='blacksmith_cleanup_', text=True)
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                f.write(script_content)
-            return script_path
-        else:  # Linux/Mac
-            # Create a bash script
-            script_content = f"""#!/bin/bash
-# Wait for the process to fully exit
-sleep 2
-
-# Try to delete the target file
-if [ -f '{target_file}' ]; then
-    rm -f '{target_file}' && echo "Deleted: {target_file}" || echo "Could not delete: {target_file}"
-fi
-
-# Delete this script itself
-SCRIPT_PATH="$0"
-sleep 1
-rm -f "$SCRIPT_PATH"
-"""
-            # Create temp bash script
-            fd, script_path = tempfile.mkstemp(suffix='.sh', prefix='blacksmith_cleanup_', text=True)
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                f.write(script_content)
-            # Make it executable
-            os.chmod(script_path, 0o700)
-            return script_path
+    console.print("\n[bold red]Uninstalling Blacksmith[/bold red]\n")
     
-    
-    print_panel("Uninstall Blacksmith", "This will remove Blacksmith from your system.")
-    
-    # Check if blacksmith command exists
-    blacksmith_path = shutil.which("blacksmith")
-    if not blacksmith_path:
-        print_warning("Blacksmith does not appear to be installed.")
-        return
-    
-    print_info(f"Found Blacksmith at: {blacksmith_path}")
-    
-    # Check for virtual environment
-    venv_path = os.path.join(os.path.expanduser("~"), ".blacksmith-venv")
-    venv_exists = os.path.exists(venv_path)
-    
-    if venv_exists:
-        print_info(f"Found virtual environment at: {venv_path}")
-    
-    # Confirm uninstallation
     if not yes:
-        confirmed = questionary.confirm(
-            "Are you sure you want to uninstall Blacksmith?",
-            default=False
-        ).ask()
-        if not confirmed:
-            print_info("Uninstallation cancelled.")
+        if not Confirm.ask("Are you sure you want to uninstall Blacksmith?", default=False):
+            console.print("[yellow]Uninstall cancelled.[/yellow]")
             return
     
-    # Try different uninstall methods
-    print_info("Attempting to uninstall Blacksmith...")
-    
-    # Remove virtual environment if it exists (with confirmation)
-    if venv_exists:
-        # Check if we're running from within this venv
-        current_python = sys.executable
-        venv_python = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
-        running_from_venv = False
-        
-        if os.path.exists(venv_python):
+    blacksmith_path = None
+    try:
+        blacksmith_path = shutil.which("blacksmith")
+        if not blacksmith_path:
             try:
-                # Check if current Python is from this venv
-                if os.path.exists(current_python):
-                    if os.path.samefile(current_python, venv_python):
-                        running_from_venv = True
-                    # Also check if current_python is inside venv_path
-                    elif os.path.commonpath([os.path.abspath(current_python), os.path.abspath(venv_path)]) == os.path.abspath(venv_path):
-                        running_from_venv = True
-            except (OSError, ValueError):
-                # If samefile fails or paths can't be compared, check if venv_path is in current_python path
-                if venv_path in os.path.abspath(current_python):
-                    running_from_venv = True
-        
-        remove_venv = True
-        if not yes:
-            remove_venv = questionary.confirm(
-                f"Remove virtual environment at {venv_path}?",
-                default=True
-            ).ask()
-        
-        if remove_venv:
-            if running_from_venv:
-                print_warning("Cannot remove virtual environment while it's active.")
-                print_info("Creating cleanup script to delete it after you deactivate and close this terminal...")
-                
-                try:
-                    # Create cleanup script for venv deletion
-                    if os.name == 'nt':  # Windows
-                        script_content = f"""
-# Wait for the process to fully exit
-Start-Sleep -Seconds 2
-
-# Try to delete the virtual environment
-$venvPath = '{venv_path}'
-if (Test-Path $venvPath) {{
-    try {{
-        Remove-Item $venvPath -Recurse -Force -ErrorAction Stop
-        Write-Host "Deleted virtual environment: $venvPath"
-    }} catch {{
-        Write-Host "Could not delete virtual environment: $venvPath"
-        Write-Host "Error: $_"
-        Write-Host "You may need to manually delete it after deactivating the venv."
-    }}
-}}
-
-# Delete this script itself
-$scriptPath = $MyInvocation.MyCommand.Path
-Start-Sleep -Seconds 1
-if (Test-Path $scriptPath) {{
-    Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
-}}
-"""
-                        cleanup_script = os.path.join(tempfile.gettempdir(), f"blacksmith_venv_cleanup_{os.getpid()}.ps1")
-                        with open(cleanup_script, 'w', encoding='utf-8') as f:
-                            f.write(script_content)
-                        
-                        # Launch cleanup script in background
-                        subprocess.Popen(
-                            ['powershell', '-ExecutionPolicy', 'Bypass', '-File', cleanup_script],
-                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
-                        )
-                    else:  # Linux/Mac
-                        script_content = f"""#!/bin/bash
-# Wait for the process to fully exit
-sleep 2
-
-# Try to delete the virtual environment
-VENV_PATH='{venv_path}'
-if [ -d "$VENV_PATH" ]; then
-    rm -rf "$VENV_PATH" && echo "Deleted virtual environment: $VENV_PATH" || echo "Could not delete virtual environment: $VENV_PATH"
-    echo "You may need to manually delete it after deactivating the venv."
-fi
-
-# Delete this script itself
-SCRIPT_PATH="$0"
-sleep 1
-rm -f "$SCRIPT_PATH"
-"""
-                        cleanup_script = os.path.join(tempfile.gettempdir(), f"blacksmith_venv_cleanup_{os.getpid()}.sh")
-                        with open(cleanup_script, 'w', encoding='utf-8') as f:
-                            f.write(script_content)
-                        os.chmod(cleanup_script, 0o700)
-                        
-                        # Launch cleanup script in background
-                        subprocess.Popen(
-                            ['bash', cleanup_script],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
-                        )
-                    
-                    print_success("Cleanup script created.")
-                    print_info("To complete venv removal:")
-                    print_info("  1. Deactivate the virtual environment (run 'deactivate')")
-                    print_info("  2. Close this terminal")
-                    print_info(f"  3. The cleanup script will automatically delete: {venv_path}")
-                    print_info("  Or manually delete it: " + ("rm -rf" if os.name != 'nt' else "Remove-Item -Recurse -Force") + f" {venv_path}")
-                except Exception as e:
-                    logger.debug(f"Failed to create cleanup script: {e}")
-                    print_warning("Could not create automatic cleanup script.")
-                    print_info("To remove the virtual environment:")
-                    print_info("  1. Deactivate it: deactivate")
-                    print_info("  2. Close this terminal")
-                    print_info(f"  3. Manually delete: {venv_path}")
-            else:
-                # Not running from venv, safe to delete
-                try:
-                    print_info(f"Removing virtual environment: {venv_path}")
-                    shutil.rmtree(venv_path)
-                    print_success("Virtual environment removed successfully.")
-                except Exception as e:
-                    print_warning(f"Could not remove virtual environment: {e}")
-                    print_info(f"You may need to manually delete: {venv_path}")
-        else:
-            print_info("Virtual environment left intact.")
+                import blacksmith
+                module_file = Path(blacksmith.__file__).resolve()
+                if module_file.exists():
+                    bin_dirs = [
+                        Path(sys.executable).parent,
+                        Path.home() / ".local" / "bin",
+                        Path("/usr/local/bin"),
+                    ]
+                    for bin_dir in bin_dirs:
+                        potential = bin_dir / "blacksmith"
+                        if potential.exists():
+                            blacksmith_path = str(potential)
+                            break
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"Could not find blacksmith executable: {e}")
     
-    # Detect which Python executable is running Blacksmith
     python_exe = sys.executable
+    is_venv = hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    )
     
-    # List of methods to try (in order of likelihood)
-    # Try both package names in case user installed from PyPI (jdi-blacksmith) or from source (blacksmith)
-    uninstall_methods = [
-        # Method 1: Use the same Python that's running Blacksmith (PyPI package name)
-        ([python_exe, "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "python -m pip"),
-        # Method 2: With --user flag (PyPI package name)
-        ([python_exe, "-m", "pip", "uninstall", "-y", "--user", "jdi-blacksmith"], "python -m pip --user"),
-        # Method 3: Try pip directly (PyPI package name)
-        (["pip", "uninstall", "-y", "jdi-blacksmith"], "pip"),
-        # Method 4: pip with --user (PyPI package name)
-        (["pip", "uninstall", "-y", "--user", "jdi-blacksmith"], "pip --user"),
-        # Method 5: Fallback to old package name (for source installs)
-        ([python_exe, "-m", "pip", "uninstall", "-y", "blacksmith"], "python -m pip (fallback)"),
-        # Method 6: pip3 (PyPI package name)
-        (["pip3", "uninstall", "-y", "jdi-blacksmith"], "pip3"),
-        # Method 7: Windows Python launcher (PyPI package name)
-        (["py", "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "py -m pip"),
-        # Method 8: python3 -m pip (PyPI package name)
-        (["python3", "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "python3 -m pip"),
-        # Method 9: python -m pip (PyPI package name)
-        (["python", "-m", "pip", "uninstall", "-y", "jdi-blacksmith"], "python -m pip"),
-    ]
-    
-    for cmd, method_name in uninstall_methods:
+    if is_venv:
         try:
-            # Always argv list + shell=False (avoid cmd.exe injection / quoting bugs)
+            import blacksmith
+            module_file = Path(blacksmith.__file__).resolve()
+            expected_venv = expected_venv_path()
+            if (
+                str(expected_venv) in str(module_file)
+                or str(module_file).startswith(str(expected_venv))
+            ):
+                python_exe = str(expected_venv / ("Scripts" if os.name == "nt" else "bin") / "python")
+                if not Path(python_exe).exists():
+                    python_exe = sys.executable
+        except Exception:
+            pass
+    
+    console.print(f"[dim]Found Blacksmith at: {blacksmith_path or 'unknown'}[/dim]")
+    console.print(f"[dim]Using Python: {python_exe}[/dim]\n")
+    
+    uninstall_methods = []
+    
+    uninstall_methods.append((
+        "pip uninstall jdi-blacksmith",
+        [python_exe, "-m", "pip", "uninstall", "jdi-blacksmith", "-y"]
+    ))
+    
+    uninstall_methods.append((
+        "pip uninstall --user jdi-blacksmith",
+        [python_exe, "-m", "pip", "uninstall", "--user", "jdi-blacksmith", "-y"]
+    ))
+    
+    uninstall_methods.append((
+        "pip uninstall blacksmith",
+        [python_exe, "-m", "pip", "uninstall", "blacksmith", "-y"]
+    ))
+    
+    if blacksmith_path:
+        try:
+            blacksmith_file = Path(blacksmith_path)
+            if blacksmith_file.exists():
+                shebang_python = None
+                try:
+                    with open(blacksmith_file, "r", encoding="utf-8", errors="ignore") as f:
+                        first_line = f.readline().strip()
+                        if first_line.startswith("#!"):
+                            shebang_python = first_line[2:].strip()
+                            if " " in shebang_python:
+                                shebang_python = shebang_python.split()[0]
+                except Exception:
+                    pass
+                
+                if shebang_python and Path(shebang_python).exists():
+                    uninstall_methods.insert(0, (
+                        f"pip uninstall via shebang Python ({shebang_python})",
+                        [shebang_python, "-m", "pip", "uninstall", "jdi-blacksmith", "-y"]
+                    ))
+                
+                scripts_dir = blacksmith_file.parent
+                if scripts_dir.name in ("Scripts", "bin"):
+                    venv_python = scripts_dir / ("python.exe" if os.name == "nt" else "python")
+                    if venv_python.exists():
+                        uninstall_methods.insert(0, (
+                            f"pip uninstall via venv Python ({venv_python})",
+                            [str(venv_python), "-m", "pip", "uninstall", "jdi-blacksmith", "-y"]
+                        ))
+        except Exception as e:
+            logger.debug(f"Could not analyze blacksmith executable: {e}")
+    
+    for method_name, cmd in uninstall_methods:
+        try:
+            console.print(f"[dim]Trying: {method_name}...[/dim]")
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
-                shell=False,
+                timeout=60
             )
             
             if result.returncode == 0:
-                print_success(f"Blacksmith uninstalled successfully using {method_name}.")
-                # Try to remove the executable if it still exists
-                # Note: This may fail if Blacksmith is currently running (which it is, since we're in it)
-                if os.path.exists(blacksmith_path):
+                console.print(f"[green][OK][/green] Successfully uninstalled via {method_name}")
+                
+                # Clean up known Blacksmith venv only after path safety checks.
+                venv_path = expected_venv_path()
+                try:
+                    assert_safe_blacksmith_venv(venv_path)
+                except ValueError as exc:
+                    print_warning(f"Skipping venv cleanup: {exc}")
+                    venv_path = None
+
+                if venv_path is not None and venv_path.exists():
+                    console.print(f"[dim]Removing virtual environment: {venv_path}[/dim]")
                     try:
-                        # Check if we're running from this executable
-                        current_exe = sys.executable
-                        if os.path.exists(current_exe) and os.path.samefile(current_exe, blacksmith_path):
-                            print_warning("Cannot remove executable while Blacksmith is running.")
-                            print_info("Creating cleanup script to delete it after this process exits...")
-                            
-                            try:
-                                cleanup_script = create_cleanup_script(blacksmith_path)
-                                
-                                # Launch the cleanup script in a separate process
-                                if os.name == 'nt':  # Windows
-                                    # Use PowerShell to run the script in background
-                                    subprocess.Popen(
-                                        ['powershell', '-ExecutionPolicy', 'Bypass', '-File', cleanup_script],
-                                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL
-                                    )
-                                else:  # Linux/Mac
-                                    # Run bash script in background
-                                    subprocess.Popen(
-                                        ['bash', cleanup_script],
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL
-                                    )
-                                
-                                print_success("Cleanup script created. The executable will be deleted automatically.")
-                                print_info("You can close this terminal now.")
-                            except Exception as e:
-                                logger.debug(f"Failed to create cleanup script: {e}")
-                                print_warning("Could not create automatic cleanup script.")
-                                print_info("Please manually delete the executable after closing this terminal:")
-                                print_info(f"  {blacksmith_path}")
-                        else:
-                            os.remove(blacksmith_path)
-                            print_success(f"Removed executable: {blacksmith_path}")
-                    except PermissionError as e:
-                        print_warning("Cannot remove executable - it's currently in use.")
-                        print_info("This is normal when uninstalling from within Blacksmith.")
-                        print_info("Creating cleanup script to delete it after this process exits...")
-                        
-                        try:
-                            cleanup_script = create_cleanup_script(blacksmith_path)
-                            
-                            # Launch the cleanup script in a separate process
-                            if os.name == 'nt':  # Windows
-                                # Use PowerShell to run the script in background
-                                subprocess.Popen(
-                                    ['powershell', '-ExecutionPolicy', 'Bypass', '-File', cleanup_script],
-                                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL
-                                )
-                            else:  # Linux/Mac
-                                # Run bash script in background
-                                subprocess.Popen(
-                                    ['bash', cleanup_script],
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL
-                                )
-                            
-                            print_success("Cleanup script created. The executable will be deleted automatically.")
-                            print_info("You can close this terminal now.")
-                        except Exception as e:
-                            logger.debug(f"Failed to create cleanup script: {e}")
-                            print_warning("Could not create automatic cleanup script.")
-                            print_info("Please manually delete the executable after closing this terminal:")
-                            print_info(f"  {blacksmith_path}")
+                        remove_venv_now(venv_path)
+                        console.print("[green][OK][/green] Virtual environment removed")
                     except Exception as e:
-                        print_warning(f"Could not remove executable: {e}")
-                        print_info(f"You may need to manually delete: {blacksmith_path}")
-                else:
-                    print_success("Executable already removed.")
+                        logger.debug(f"Could not remove venv immediately: {e}")
+                        if schedule_delete_venv(venv_path):
+                            console.print(
+                                "[yellow]Virtual environment will be removed after process exits[/yellow]"
+                            )
+                        else:
+                            print_warning(f"Could not remove virtual environment: {venv_path}")
+                            print_info(f"You may need to manually delete: {venv_path}")
+                
+                # Remove executable only if it resolves under an approved parent.
+                if blacksmith_path:
+                    try:
+                        blacksmith_file = assert_safe_blacksmith_executable(blacksmith_path)
+                    except ValueError as exc:
+                        print_warning(f"Skipping executable cleanup: {exc}")
+                        blacksmith_file = None
+
+                    if blacksmith_file is not None and blacksmith_file.exists():
+                        console.print(f"[dim]Removing executable: {blacksmith_file}[/dim]")
+                        try:
+                            remove_file_now(blacksmith_file)
+                            console.print("[green][OK][/green] Executable removed")
+                        except Exception as e:
+                            logger.debug(f"Could not remove executable immediately: {e}")
+                            if schedule_delete_file(blacksmith_file):
+                                console.print(
+                                    "[yellow]Executable will be removed after process exits[/yellow]"
+                                )
+                            else:
+                                print_warning(f"Could not remove executable: {blacksmith_file}")
+                                print_info(f"You may need to manually delete: {blacksmith_file}")
+                
+                console.print("\n[bold green]Blacksmith has been uninstalled.[/bold green]")
+                console.print("[dim]You may need to restart your terminal for PATH changes to take effect.[/dim]")
                 return
             else:
-                # Log the error for debugging (but don't show to user unless all fail)
-                logger.debug(f"Uninstall method {method_name} failed: {result.stderr}")
-        except FileNotFoundError:
-            # Command not found, try next method
-            continue
+                error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                if error_msg:
+                    logger.debug(f"Method {method_name} failed: {error_msg[:200]}")
+                continue
+                
         except subprocess.TimeoutExpired:
             print_warning(f"Uninstall method {method_name} timed out.")
             continue
@@ -1793,7 +1634,6 @@ rm -f "$SCRIPT_PATH"
             logger.debug(f"Uninstall method {method_name} raised exception: {e}")
             continue
     
-    # If all methods failed, show detailed error
     print_error("Could not automatically uninstall Blacksmith.")
     print_info("You may need to manually remove it:")
     print_info(f"  - Remove the command: {blacksmith_path}")
@@ -1802,12 +1642,12 @@ rm -f "$SCRIPT_PATH"
     print_info("  - Or: pip uninstall --user jdi-blacksmith")
     print_info("  - If installed from source: pip uninstall blacksmith")
     
-    # Try to show what went wrong with the last method
     if blacksmith_path:
         print_info("\nTroubleshooting:")
         print_info(f"  - Python executable: {python_exe}")
         print_info(f"  - Blacksmith path: {blacksmith_path}")
         print_info("  - Try running the pip command manually to see the error")
+
 
 
 def main():
