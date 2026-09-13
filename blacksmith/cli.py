@@ -623,7 +623,7 @@ def list():
             elif managers_supported:
                 mgr_info = f"{len(managers_supported)} manager(s)"
             else:
-                mgr_info = "—"
+                mgr_info = "-"
             
             rows.append([set_name, description, str(package_count), os_compat, mgr_info])
     
@@ -634,7 +634,8 @@ def list():
     )
     
     console.print()
-    print_info("Legend: 🪟 Windows | 🐧 Linux | 🍎 macOS | ✓ Compatible with your OS")
+    from blacksmith.utils.ui import os_legend_text
+    print_info(os_legend_text())
 
 
 @cli.command()
@@ -1023,8 +1024,8 @@ def create(advanced: bool):
         print_info("Advanced mode: Creating single-manager set")
         # In advanced mode, ask for single OS and single manager
         os_choices = [
-            questionary.Choice("🪟 Windows", "windows"),
-            questionary.Choice("🐧 Linux", "linux"),
+            questionary.Choice("Windows", "windows"),
+            questionary.Choice("Linux", "linux"),
         ]
         target_os_selection = questionary.select(
             "Target OS:",
@@ -1059,9 +1060,9 @@ def create(advanced: bool):
         # Normal mode: cross-platform with multiple managers
         print_info("Select target operating system(s) for this set:")
         os_choices = [
-            questionary.Choice("🪟 Windows only", "windows"),
-            questionary.Choice("🐧 Linux only", "linux"),
-            questionary.Choice("🪟🐧 Windows and Linux (cross-platform)", "both"),
+            questionary.Choice("Windows only", "windows"),
+            questionary.Choice("Linux only", "linux"),
+            questionary.Choice("Windows and Linux (cross-platform)", "both"),
         ]
         
         target_os_selection = questionary.select(

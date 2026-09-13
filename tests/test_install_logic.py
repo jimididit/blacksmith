@@ -36,8 +36,15 @@ def test_find_manager_with_preferences(mock_managers):
         }
     }
     
-    # Create preferences (winget preferred)
-    prefs = PreferredManagerOrder()
+    # Force Windows preference order so the assertion is OS-independent
+    prefs = PreferredManagerOrder(
+        custom_preferences={
+            "windows": ["winget", "chocolatey", "scoop"],
+            "linux": ["winget", "chocolatey", "apt"],
+            "macos": ["winget", "chocolatey"],
+            "darwin": ["winget", "chocolatey"],
+        }
+    )
     
     result = find_manager_for_package(
         package_config,

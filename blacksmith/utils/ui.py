@@ -37,6 +37,12 @@ if sys.platform == "win32":
     SYMBOL_ERROR = "[X]"
     SYMBOL_WARNING = "[!]"
     SYMBOL_INFO = "[i]"
+    OS_BADGE = {
+        "windows": "Win",
+        "linux": "Lin",
+        "macos": "Mac",
+        "darwin": "Mac",
+    }
 else:
     console = Console(theme=custom_theme)
     # Unicode symbols for Unix-like systems
@@ -44,6 +50,12 @@ else:
     SYMBOL_ERROR = "✗"
     SYMBOL_WARNING = "⚠"
     SYMBOL_INFO = "ℹ"
+    OS_BADGE = {
+        "windows": "🪟",
+        "linux": "🐧",
+        "macos": "🍎",
+        "darwin": "🍎",
+    }
 
 
 def print_panel(title: str, content: str, style: str = "primary") -> None:
@@ -132,15 +144,17 @@ def format_os_badge(os_name: str) -> str:
     Returns:
         Emoji or abbreviation for the OS
     """
-    os_name_lower = os_name.lower()
-    if os_name_lower == "windows":
-        return "🪟"
-    elif os_name_lower in ["linux"]:
-        return "🐧"
-    elif os_name_lower in ["macos", "darwin"]:
-        return "🍎"
-    else:
-        return os_name[:3].upper()
+    return OS_BADGE.get(os_name.lower(), os_name[:3].upper())
+
+
+def os_legend_text() -> str:
+    """ASCII/emoji-safe OS legend for list output."""
+    return (
+        f"Legend: {format_os_badge('windows')} Windows | "
+        f"{format_os_badge('linux')} Linux | "
+        f"{format_os_badge('macos')} macOS | "
+        f"{SYMBOL_SUCCESS} Compatible with your OS"
+    )
 
 
 def format_os_compatibility(
@@ -175,7 +189,7 @@ def format_os_compatibility(
     # Check compatibility
     if current_os in target_os_normalized:
         if show_checkmark:
-            return f"[bold #44FFD1]{os_compat}[/bold #44FFD1] ✓"
+            return f"[bold #44FFD1]{os_compat}[/bold #44FFD1] {SYMBOL_SUCCESS}"
         else:
             return f"[bold #44FFD1]{os_compat}[/bold #44FFD1]"
     else:
@@ -199,7 +213,7 @@ def format_manager_preferences(
         Formatted manager preferences string
     """
     if not preferred_managers:
-        return "—"
+        return "-"
     
     if current_os in preferred_managers:
         managers = preferred_managers[current_os]
@@ -241,7 +255,7 @@ def format_os_status(
         target_os_normalized.append("macos")
     
     if current_os in target_os_normalized:
-        return ("✓ Compatible", "#44FFD1")
+        return (f"{SYMBOL_SUCCESS} Compatible", "#44FFD1")
     else:
-        return ("✗ Not compatible", "#FF6B6B")
+        return (f"{SYMBOL_ERROR} Not compatible", "#FF6B6B")
 
