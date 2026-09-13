@@ -318,9 +318,15 @@ blacksmith install development --force
 
 # Stop after the first install/update failure (default is best-effort continue)
 blacksmith install development --fail-fast
+
+# Non-interactive / CI: always pass --yes (or --dry-run). Without a TTY, install refuses prompts.
+blacksmith install development --yes
+blacksmith install --file ./my-set.yaml --yes
 ```
 
 **Install policy:** By default Blacksmith continues after a package failure (best effort; no rollback). Use `--fail-fast` to stop immediately. Each package is installed individually so success/failure counts match reality.
+
+**Non-interactive:** If stdin is not a TTY, `install` requires `--yes` or `--dry-run`. Interactive confirmation and “already installed?” prompts are not available without a terminal.
 
 **Privileges:** On Linux, `apt` / `pacman` / `yum|dnf` / `snap` may prompt for sudo. **Flatpak** is a supported Linux manager and does not use that sudo path.
 

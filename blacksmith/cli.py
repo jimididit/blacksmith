@@ -173,6 +173,7 @@ def show_installation_summary(
     managers_supported = config.get("managers_supported")
     
     rows = []
+    plan_lines = []
     for pkg in packages:
         pkg_name = pkg.get("name", "Unknown")
         manager_info = find_manager_for_package(
@@ -183,19 +184,30 @@ def show_installation_summary(
         )
         if manager_info:
             mgr, pkg_id = manager_info
-            # Show if this was chosen from multiple options
             pkg_managers = pkg.get("managers", {})
             if len(pkg_managers) > 1:
-                # Highlight the selected manager
                 manager_display = f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"
                 manager_display += f" [dim](selected from {len(pkg_managers)} options)[/dim]"
-                rows.append([pkg_name, manager_display])
             else:
-                rows.append([pkg_name, f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"])
+                manager_display = f"[bold #44FFD1]{mgr.name}[/bold #44FFD1]: {pkg_id}"
+
+            if dry_run:
+                try:
+                    already = mgr.is_installed(pkg_id)
+                except Exception:
+                    already = False
+                action = "skip (already installed)" if already else "install"
+                rows.append([pkg_name, manager_display, action])
+                plan_lines.append(f"{action}: {pkg_name} via {mgr.name} ({pkg_id})")
+            else:
+                rows.append([pkg_name, manager_display])
         else:
-            rows.append([pkg_name, "[bold red]❌ No compatible manager found[/bold red]"])
+            if dry_run:
+                rows.append([pkg_name, "[bold red]No compatible manager[/bold red]", "unavailable"])
+                plan_lines.append(f"unavailable: {pkg_name} (no compatible manager)")
+            else:
+                rows.append([pkg_name, "[bold red]❌ No compatible manager found[/bold red]"])
     
-    # Use Rich table for better formatting
     title_suffix = " (dry-run)" if dry_run else ""
     table = Table(
         title=f"Installation Summary - {config.get('name', 'Unknown Set')}{title_suffix}",
@@ -204,12 +216,20 @@ def show_installation_summary(
     )
     table.add_column("Package", style="cyan", no_wrap=True)
     table.add_column("Manager", style="white")
+    if dry_run:
+        table.add_column("Action", style="yellow")
     
     for row in rows:
-        table.add_row(row[0], row[1])
+        table.add_row(*row)
     
     console.print()
     console.print(table)
+
+    if dry_run and plan_lines:
+        console.print()
+        print_info("Dry-run plan (package, manager, id, action):")
+        for line in plan_lines:
+            print_info(f"  {line}")
     
     if not rows:
         print_warning("No packages to install.")
@@ -270,7 +290,13 @@ def install_packages(
     from blacksmith.package_managers.results import PackageOutcome, PackageStatus
     from blacksmith.utils.identifiers import validate_package_id
     from blacksmith.utils.os_detector import detect_os
-    
+    from blacksmith.utils.tty import require_tty_or_yes
+
+    tty_ok, tty_error = require_tty_or_yes(assume_yes, dry_run=dry_run)
+    if not tty_ok:
+        print_error(tty_error or "Non-interactive session requires --yes or --dry-run.")
+        return False
+
     # Detect current OS
     current_os = detect_os().lower()
     # Normalize macOS
