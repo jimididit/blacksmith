@@ -29,13 +29,13 @@ def test_install_packages_rejects_non_tty_without_yes(_os, mock_detect, monkeypa
     mgr = Mock()
     mgr.name = "apt"
     mock_detect.return_value = [mgr]
-    ok = install_packages(
+    result = install_packages(
         {"name": "t", "packages": []},
         show_summary=False,
         assume_yes=False,
         dry_run=False,
     )
-    assert ok is False
+    assert result.ok is False
 
 
 @patch("blacksmith.cli.find_manager_for_package")

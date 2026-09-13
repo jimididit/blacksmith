@@ -272,9 +272,14 @@ def install_packages(
     dry_run: bool = False,
     config_source: Optional[str] = None,
     fail_fast: bool = False,
+    apply_mode: bool = False,
 ):
-    """Install packages from configuration.
-    
+    """Install or apply packages from configuration.
+
+    Returns InstallRunResult. Interactive install still prompts on already-installed
+    packages unless skip_installed/assume_yes. apply_mode always skips installed,
+    verifies after successful install, and never prompts reinstall/update.
+
     Args:
         config: Configuration dict with packages to install
         skip_installed: If True, skip already installed packages without prompting
@@ -285,9 +290,10 @@ def install_packages(
         dry_run: If True, show plan and exit without installing
         config_source: Optional path/label for custom config trust warning
         fail_fast: If True, stop after the first install/update failure (default: continue)
+        apply_mode: If True, ensure-state (skip installed, verify after install)
     """
     from blacksmith.config.preferences import PreferredManagerOrder
-    from blacksmith.package_managers.results import PackageOutcome, PackageStatus
+    from blacksmith.package_managers.results import InstallRunResult, PackageOutcome, PackageStatus
     from blacksmith.utils.identifiers import validate_package_id
     from blacksmith.utils.os_detector import detect_os
     from blacksmith.utils.tty import require_tty_or_yes
@@ -295,7 +301,7 @@ def install_packages(
     tty_ok, tty_error = require_tty_or_yes(assume_yes, dry_run=dry_run)
     if not tty_ok:
         print_error(tty_error or "Non-interactive session requires --yes or --dry-run.")
-        return False
+        return InstallRunResult(ok=False)
 
     # Detect current OS
     current_os = detect_os().lower()
@@ -319,7 +325,7 @@ def install_packages(
                 print_warning(f"This set targets: {', '.join(target_os_list)}")
                 print_warning(f"Your current OS is: {current_os.capitalize()}")
                 print_error("OS mismatch. Use --force to install anyway.")
-                return False
+                return InstallRunResult(ok=False)
             else:
                 print_warning(f"Installing set for {', '.join(target_os_list)} on {current_os.capitalize()} (--force enabled)")
     
@@ -327,7 +333,7 @@ def install_packages(
     
     if not available_managers:
         print_error("No package managers detected on this system.")
-        return False
+        return InstallRunResult(ok=False)
     
     # Build preference system
     preferred_managers_config = config.get("preferred_managers")
@@ -370,16 +376,16 @@ def install_packages(
             config_source=config_source,
         )
         if confirmation == "back":
-            return "back"
+            return InstallRunResult(ok=True, back=True)
         if confirmation == "dry_run":
-            return True
+            return InstallRunResult(ok=True)
         elif not confirmation:
             print_info("Installation cancelled.")
-            return False
+            return InstallRunResult(ok=False, cancelled=True)
     
     if dry_run:
         print_info("Dry-run only. No packages will be installed.")
-        return True
+        return InstallRunResult(ok=True)
     
     # Sudo: system PMs only. Flatpak is a first-class Linux PM but does not use sudo.
     sudo_managers = {"apt", "pacman", "yum", "snap"}
@@ -406,6 +412,7 @@ def install_packages(
     packages_to_skip = []
     not_found = []
     outcomes = []
+    auto_skip = skip_installed or assume_yes or apply_mode
 
     console.print()
     print_info("Checking installed packages...")
@@ -429,6 +436,11 @@ def install_packages(
                 missing = [m for m in pkg_manager_names if m not in available_manager_names]
                 if missing:
                     print_warning(f"{pkg_name}: Required managers not available: {', '.join(missing)}")
+            if apply_mode:
+                outcomes.append(PackageOutcome(
+                    pkg_name, "", "none", "install", PackageStatus.FAILED,
+                    message="no available manager",
+                ))
             continue
 
         mgr, pkg_id = manager_info
@@ -436,6 +448,11 @@ def install_packages(
         if not id_ok:
             print_error(f"{pkg_name}: refusing unsafe package ID for {mgr.name}: {id_error}")
             not_found.append(pkg_name)
+            if apply_mode:
+                outcomes.append(PackageOutcome(
+                    pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
+                    message=id_error or "unsafe package ID",
+                ))
             continue
 
         pkg_managers = pkg.get("managers", {})
@@ -444,7 +461,7 @@ def install_packages(
             print_info(f"{pkg_name}: Using {mgr.name} (preferred from available: {', '.join(all_pkg_managers)})")
 
         if mgr.is_installed(pkg_id):
-            if skip_installed or assume_yes:
+            if auto_skip:
                 packages_to_skip.append(pkg_name)
                 outcomes.append(PackageOutcome(
                     pkg_name, pkg_id, mgr.name, "skip", PackageStatus.SKIPPED,
@@ -517,6 +534,17 @@ def install_packages(
                     # install or reinstall — one ID at a time for honest reporting
                     ok = mgr.install([pkg_id])
                     progress.update(task, advance=1)
+                    if ok and apply_mode and not mgr.is_installed(pkg_id):
+                        outcomes.append(PackageOutcome(
+                            pkg_name, pkg_id, mgr.name, action, PackageStatus.FAILED,
+                            message="post-install verify failed",
+                        ))
+                        print_error(f"Installed {pkg_name} but verify failed (not detected as installed)")
+                        if fail_fast:
+                            stopped_early = True
+                            print_warning("Fail-fast: stopping after verify failure.")
+                            break
+                        continue
                     if ok:
                         outcomes.append(PackageOutcome(
                             pkg_name, pkg_id, mgr.name, action, PackageStatus.OK,
@@ -549,6 +577,7 @@ def install_packages(
     )
     fail_count = sum(1 for o in outcomes if o.status == PackageStatus.FAILED)
     skip_count = sum(1 for o in outcomes if o.status == PackageStatus.SKIPPED)
+    changed_count = success_count + reinstalled_count + updated_count
 
     console.print()
     if packages_to_skip or skip_count:
@@ -566,7 +595,13 @@ def install_packages(
     if stopped_early:
         print_warning("Remaining packages were not attempted (--fail-fast).")
 
-    return fail_count == 0
+    return InstallRunResult(
+        ok=fail_count == 0,
+        outcomes=outcomes,
+        changed=changed_count,
+        skipped=skip_count,
+        failed=fail_count,
+    )
 
 
 
@@ -603,7 +638,7 @@ def cli(ctx):
                 result = install_packages(config, show_summary=False, prefer_manager=None, force=False)
                 
                 # Handle back option from install_packages
-                if result == "back":
+                if result.back:
                     continue
                 
                 # After installation, ask if user wants to continue
@@ -738,7 +773,7 @@ def install(
             sys.exit(1)
     
     # Install packages
-    success = install_packages(
+    result = install_packages(
         config,
         skip_installed=skip_installed,
         prefer_manager=prefer_manager,
@@ -748,7 +783,68 @@ def install(
         config_source=config_source,
         fail_fast=fail_fast,
     )
-    sys.exit(0 if success else 1)
+    sys.exit(result.exit_code_install())
+
+
+@cli.command()
+@click.argument("set_name", required=False)
+@click.option("--file", "-f", "config_file", help="Path to custom config file")
+@click.option("--prefer", "-p", "prefer_manager", help="Prefer specific package manager (overrides config)")
+@click.option("--force", is_flag=True, help="Force apply even if OS doesn't match target_os")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts (required for non-interactive custom --file applies)")
+@click.option("--dry-run", is_flag=True, help="Show what would change without making changes")
+@click.option("--fail-fast", is_flag=True, help="Stop after the first install/verify failure (default: continue best-effort)")
+def apply(
+    set_name: Optional[str],
+    config_file: Optional[str],
+    prefer_manager: Optional[str],
+    force: bool,
+    assume_yes: bool,
+    dry_run: bool,
+    fail_fast: bool,
+):
+    """Ensure a set matches desired state (idempotent).
+
+    Skips already-installed packages, installs missing ones, verifies after install.
+    Exit codes: 0 already compliant, 2 changed with no failures, 1 failures.
+    """
+    config = None
+    config_source = None
+
+    if config_file:
+        config = load_custom_config(config_file)
+        if not config:
+            print_error(f"Failed to load config file: {config_file}")
+            sys.exit(1)
+        config_source = str(config_file)
+    elif set_name:
+        config = load_set(set_name)
+        if not config:
+            print_error(f"Set '{set_name}' not found.")
+            print_info("Use 'blacksmith list' to see available sets.")
+            sys.exit(1)
+    else:
+        show_welcome()
+        selected = show_sets_menu()
+        if not selected:
+            return
+        config = load_set(selected)
+        if not config:
+            print_error(f"Failed to load set: {selected}")
+            sys.exit(1)
+
+    result = install_packages(
+        config,
+        skip_installed=True,
+        prefer_manager=prefer_manager,
+        force=force,
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        config_source=config_source,
+        fail_fast=fail_fast,
+        apply_mode=True,
+    )
+    sys.exit(result.exit_code_apply())
 
 
 @cli.command()

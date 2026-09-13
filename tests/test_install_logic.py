@@ -208,7 +208,7 @@ def test_install_packages_honors_prefer_via_finder(
     progress.update = Mock()
     mock_progress.return_value = progress
 
-    ok = install_packages(
+    result = install_packages(
         {
             "name": "t",
             "packages": [{"name": "Git", "managers": {"apt": "git", "snap": "git"}}],
@@ -217,7 +217,7 @@ def test_install_packages_honors_prefer_via_finder(
         assume_yes=True,
         prefer_manager="apt",
     )
-    assert ok is True
+    assert result.ok is True
     mock_find.assert_called()
     apt.install.assert_called_once_with(["git"])
 

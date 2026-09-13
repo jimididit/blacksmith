@@ -79,7 +79,7 @@ PATH or permission problems: [Troubleshooting](#troubleshooting).
 ```bash
 blacksmith list
 blacksmith install minimal --dry-run
-blacksmith install minimal --yes
+blacksmith apply minimal --yes
 ```
 
 | Set | Focus |
@@ -102,6 +102,9 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith install <set> --yes` | Non-interactive (required without a TTY) |
 | `blacksmith install <set> --fail-fast` | Stop on first package failure |
 | `blacksmith install --file path.yaml --yes` | Install custom YAML ([untrusted](#trust)) |
+| `blacksmith apply <set> --yes` | Ensure set state (idempotent; skip installed) |
+| `blacksmith apply <set> --dry-run` | Preview apply plan only |
+| `blacksmith apply --file path.yaml --yes` | Apply custom YAML ([untrusted](#trust)) |
 | `blacksmith create` / `create --advanced` | Create a set |
 | `blacksmith search <query> [--manager name]` | Search managers |
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
@@ -109,6 +112,9 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith uninstall [--yes]` | Remove Blacksmith |
 
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
+Apply also supports `--prefer`, `--force`, and `--fail-fast`.
+
+**Apply exit codes:** `0` already compliant, `2` changed with no failures, `1` failures. Install stays `0`/`1`.
 
 **Policy:** default is best-effort continue after failures (no rollback). Each package installs individually.
 
