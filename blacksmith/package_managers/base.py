@@ -1,7 +1,7 @@
 """Base class for package managers."""
 
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional
 
 
 class PackageManager(ABC):
@@ -52,6 +52,14 @@ class PackageManager(ABC):
         """
         pass
     
+    def supports_version_pins(self) -> bool:
+        """True if this manager can honor name|version install pins."""
+        return False
+
+    def get_installed_version(self, package: str) -> Optional[str]:
+        """Return installed version string, or None if missing/unknown."""
+        return None
+
     def update(self) -> bool:
         """
         Update package manager database.
