@@ -1,10 +1,11 @@
 """Chocolatey package manager implementation."""
 
 import subprocess
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
+from blacksmith.utils.package_ref import parse_package_ref
 
 logger = setup_logger(__name__)
 
@@ -33,15 +34,38 @@ class ChocolateyManager(PackageManager):
         if not packages:
             return True
         
+        # Check if any packages have version pins
+        has_pins = any("|" in pkg for pkg in packages)
+        
         try:
-            cmd = ["choco", "install", "-y"] + packages
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            return result.returncode == 0
+            if has_pins:
+                # Install one package per subprocess when any pin is present
+                for pkg in packages:
+                    name, version = parse_package_ref(pkg)
+                    if version:
+                        cmd = ["choco", "install", "-y", name, "--version", version]
+                    else:
+                        cmd = ["choco", "install", "-y", name]
+                    
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=600,
+                    )
+                    if result.returncode != 0:
+                        return False
+                return True
+            else:
+                # Unpinned batch install (preserve existing behavior)
+                cmd = ["choco", "install", "-y"] + packages
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                return result.returncode == 0
         except subprocess.CalledProcessError as e:
             logger.error(f"Chocolatey install failed: {e}")
             return False
@@ -51,14 +75,16 @@ class ChocolateyManager(PackageManager):
     
     def is_installed(self, package: str) -> bool:
         """Check if package is installed."""
+        # Strip pin before query (defense in depth)
+        name, _ = parse_package_ref(package)
         try:
             result = subprocess.run(
-                ["choco", "list", "--local-only", package],
+                ["choco", "list", "--local-only", name],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            return result.returncode == 0 and package in result.stdout
+            return result.returncode == 0 and name in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
@@ -87,6 +113,34 @@ class ChocolateyManager(PackageManager):
             from blacksmith.utils.ui import print_error
             print_error("Chocolatey upgrade timed out")
             return False
+    
+    def supports_version_pins(self) -> bool:
+        """Return True - this manager supports version pins."""
+        return True
+    
+    def get_installed_version(self, package: str) -> Optional[str]:
+        """Get installed version of a package."""
+        try:
+            result = subprocess.run(
+                ["choco", "list", "--local-only", "--limit-output", package],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # Parse first line: name|version
+                first_line = result.stdout.strip().split('\n')[0]
+                if '|' in first_line:
+                    _, version = first_line.split('|', 1)
+                    return version
+                else:
+                    # Fallback for whitespace format: name version
+                    parts = first_line.split()
+                    if len(parts) >= 2:
+                        return parts[1]
+            return None
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
     
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using Chocolatey."""

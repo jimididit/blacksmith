@@ -1,10 +1,11 @@
 """APT package manager implementation."""
 
 import subprocess
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
+from blacksmith.utils.package_ref import parse_package_ref
 
 logger = setup_logger(__name__)
 
@@ -45,9 +46,18 @@ class AptManager(PackageManager):
                 logger.error("APT update failed")
                 return False
             
+            # Process packages to handle version pins
+            processed_packages = []
+            for pkg in packages:
+                name, version = parse_package_ref(pkg)
+                if version:
+                    processed_packages.append(f"{name}={version}")
+                else:
+                    processed_packages.append(name)
+            
             # Install packages
             # Don't capture output so sudo password prompts are visible
-            cmd = ["sudo", "apt", "install", "-y"] + packages
+            cmd = ["sudo", "apt", "install", "-y"] + processed_packages
             result = subprocess.run(
                 cmd,
                 timeout=600
@@ -62,14 +72,16 @@ class AptManager(PackageManager):
     
     def is_installed(self, package: str) -> bool:
         """Check if package is installed."""
+        # Strip pin before query (defense in depth)
+        name, _ = parse_package_ref(package)
         try:
             result = subprocess.run(
-                ["dpkg", "-l", package],
+                ["dpkg", "-l", name],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
-            return result.returncode == 0 and package in result.stdout
+            return result.returncode == 0 and name in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
     
@@ -103,6 +115,25 @@ class AptManager(PackageManager):
             from blacksmith.utils.ui import print_error
             print_error("APT upgrade timed out")
             return False
+    
+    def supports_version_pins(self) -> bool:
+        """Return True - this manager supports version pins."""
+        return True
+    
+    def get_installed_version(self, package: str) -> Optional[str]:
+        """Get installed version of a package."""
+        try:
+            result = subprocess.run(
+                ["dpkg-query", "-W", "-f=${Version}", package],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            return None
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
     
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for packages using apt-cache."""
