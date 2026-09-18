@@ -1,10 +1,11 @@
 """Homebrew package manager implementation (macOS)."""
 
 import subprocess
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
+from blacksmith.utils.package_ref import parse_package_ref
 
 logger = setup_logger(__name__)
 
@@ -33,8 +34,17 @@ class BrewManager(PackageManager):
         if not packages:
             return True
 
+        # Parse package references and build install args
+        install_args = []
+        for pkg in packages:
+            name, version = parse_package_ref(pkg)
+            if version:
+                install_args.append(f"{name}@{version}")
+            else:
+                install_args.append(name)
+
         try:
-            cmd = ["brew", "install"] + packages
+            cmd = ["brew", "install"] + install_args
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -52,24 +62,71 @@ class BrewManager(PackageManager):
     def is_installed(self, package: str) -> bool:
         """Check if a formula or cask is installed."""
         try:
+            # Strip pin if present
+            name, _ = parse_package_ref(package)
+            result = subprocess.run(
+                ["brew", "list", "--versions", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode == 0 and name in result.stdout:
+                return True
+            # Casks may need an explicit list
+            result = subprocess.run(
+                ["brew", "list", "--cask", "--versions", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            return result.returncode == 0 and name in result.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+    
+    def supports_version_pins(self) -> bool:
+        """True if this manager can honor name|version install pins."""
+        return True
+    
+    def get_installed_version(self, package: str) -> Optional[str]:
+        """Return installed version string, or None if missing/unknown.
+        
+        Accepts bare names (go) or versioned formulae (go@1.21).
+        """
+        try:
+            # Try formula first (accepts bare name or versioned formula like go@1.21)
             result = subprocess.run(
                 ["brew", "list", "--versions", package],
                 capture_output=True,
                 text=True,
                 timeout=15,
             )
-            if result.returncode == 0 and package in result.stdout:
-                return True
-            # Casks may need an explicit list
+            if result.returncode == 0:
+                # Parse line "name ver [ver...]" or "name@ver cellar_ver [cellar_ver...]"
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip() and package in line:
+                        parts = line.split()
+                        # For versioned formulae like "go@1.21 1.21.5", parts[0] is "go@1.21"
+                        if len(parts) >= 2 and parts[0] == package:
+                            return parts[1]  # First version after formula name
+            
+            # Try cask if formula failed
             result = subprocess.run(
                 ["brew", "list", "--cask", "--versions", package],
                 capture_output=True,
                 text=True,
                 timeout=15,
             )
-            return result.returncode == 0 and package in result.stdout
+            if result.returncode == 0:
+                # Parse line "name ver [ver...]" -> first version token after name
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip() and package in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[0] == package:
+                            return parts[1]  # First version after name
+            
+            return None
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
+            return None
 
     def update(self) -> bool:
         """Update Homebrew formulae/cask metadata."""

@@ -3,10 +3,11 @@
 import re
 import subprocess
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
+from blacksmith.utils.package_ref import parse_package_ref
 
 logger = setup_logger(__name__)
 
@@ -40,8 +41,10 @@ class WingetManager(PackageManager):
         try:
             success = True
             for package in packages:
+                name, version = parse_package_ref(package)
+                
                 # First verify package exists
-                verify_cmd = ["winget", "search", "--exact", "--id", package]
+                verify_cmd = ["winget", "search", "--exact", "--id", name]
                 verify_result = subprocess.run(
                     verify_cmd,
                     capture_output=True,
@@ -49,15 +52,20 @@ class WingetManager(PackageManager):
                     timeout=10,
                 )
                 
-                if verify_result.returncode != 0 or package not in verify_result.stdout:
-                    print_error(f"Package {package} not found in winget repository")
-                    print_warning(f"  Try searching: winget search {package.split('.')[0] if '.' in package else package}")
+                if verify_result.returncode != 0 or name not in verify_result.stdout:
+                    print_error(f"Package {name} not found in winget repository")
+                    print_warning(f"  Try searching: winget search {name.split('.')[0] if '.' in name else name}")
                     success = False
                     continue
                 
-                # Try installation without --silent first (more reliable)
-                # Some packages don't support --silent
-                cmd = ["winget", "install", "--accept-package-agreements", "--accept-source-agreements", package]
+                # Build install command
+                if version:
+                    # Pinned: use --id, -e, --version with accept flags
+                    cmd = ["winget", "install", "--id", name, "-e", "--version", version, "--accept-package-agreements", "--accept-source-agreements"]
+                else:
+                    # Bare: keep existing behavior
+                    cmd = ["winget", "install", "--accept-package-agreements", "--accept-source-agreements", name]
+                
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
@@ -72,27 +80,27 @@ class WingetManager(PackageManager):
                     
                     # Show user-friendly error
                     if "No package found" in error_msg or "No applicable package" in error_msg:
-                        print_error(f"Package {package} not found in winget repository")
-                        print_warning(f"  Try: winget search {package.split('.')[0] if '.' in package else package}")
+                        print_error(f"Package {name} not found in winget repository")
+                        print_warning(f"  Try: winget search {name.split('.')[0] if '.' in name else name}")
                     elif "requires administrator" in error_msg.lower() or "elevated" in error_msg.lower() or "administrator" in error_msg.lower():
-                        print_error(f"Administrator privileges required for {package}")
+                        print_error(f"Administrator privileges required for {name}")
                         print_warning("  Please run Blacksmith as Administrator")
                     elif "hash" in error_msg.lower() or "security" in error_msg.lower():
-                        print_error(f"Security/hash verification failed for {package}")
+                        print_error(f"Security/hash verification failed for {name}")
                         print_warning("  You may need to update winget or allow hash override")
                     elif error_msg:
                         # Show first few lines of error
                         error_lines = [line.strip() for line in error_msg.split('\n') if line.strip()][:3]
                         if error_lines:
                             error_preview = ' | '.join(error_lines)
-                            print_error(f"Failed to install {package}: {error_preview[:200]}")
+                            print_error(f"Failed to install {name}: {error_preview[:200]}")
                         else:
-                            print_error(f"Failed to install {package} (check winget output above)")
+                            print_error(f"Failed to install {name} (check winget output above)")
                     else:
-                        print_error(f"Failed to install {package} (exit code: {result.returncode})")
+                        print_error(f"Failed to install {name} (exit code: {result.returncode})")
                     success = False
                 else:
-                    print_info(f"Successfully installed {package}")
+                    print_info(f"Successfully installed {name}")
             return success
         except subprocess.TimeoutExpired:
             logger.error("Winget install timed out")
@@ -102,17 +110,69 @@ class WingetManager(PackageManager):
     def is_installed(self, package: str) -> bool:
         """Check if package is installed."""
         try:
+            # Strip pin if present
+            name, _ = parse_package_ref(package)
             # Winget package IDs are in format Publisher.Package
             # We need to check if any installed package matches
             result = subprocess.run(
-                ["winget", "list", package],
+                ["winget", "list", name],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            return result.returncode == 0 and package in result.stdout
+            return result.returncode == 0 and name in result.stdout
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
+    
+    def supports_version_pins(self) -> bool:
+        """True if this manager can honor name|version install pins."""
+        return True
+    
+    def get_installed_version(self, package: str) -> Optional[str]:
+        """Return installed version string, or None if missing/unknown."""
+        try:
+            result = subprocess.run(
+                ["winget", "list", "--id", package, "-e"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return None
+            
+            # Parse Version column from table output
+            # Format: Name   Id   Version   [Available]   Source
+            lines = result.stdout.strip().split('\n')
+            
+            # Find header line to locate Version column index
+            header_idx = -1
+            version_col_idx = -1
+            for i, line in enumerate(lines):
+                if 'Version' in line and 'Id' in line:
+                    header_idx = i
+                    # Split header to find Version column position
+                    header_parts = line.split()
+                    try:
+                        version_col_idx = header_parts.index('Version')
+                    except ValueError:
+                        pass
+                    break
+            
+            # Parse data lines
+            for i, line in enumerate(lines):
+                if i <= header_idx + 1:  # Skip header and separator
+                    continue
+                if package in line:
+                    parts = line.split()
+                    # If we found Version column, use that index
+                    if version_col_idx >= 0 and len(parts) > version_col_idx:
+                        return parts[version_col_idx]
+                    # Fallback: token after Id (parts[0]=Name, parts[1]=Id, parts[2]=Version)
+                    if len(parts) >= 3:
+                        return parts[2]
+            return None
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
     
     def update_package(self, package: str) -> bool:
         """Update a specific package using winget upgrade."""

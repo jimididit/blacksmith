@@ -188,6 +188,7 @@ def build_install_plan(
     only needs the manager mapping.
     """
     from blacksmith.utils.identifiers import validate_package_id
+    from blacksmith.utils.package_ref import parse_package_ref, versions_equal
 
     managers_supported = config.get("managers_supported")
     plan: List[PlanEntry] = []
@@ -218,17 +219,52 @@ def build_install_plan(
             )
             continue
 
-        already = False
-        if check_installed:
-            try:
-                already = mgr.is_installed(pkg_id)
-            except Exception:
-                already = False
+        name, version = parse_package_ref(pkg_id)
 
-        if already:
+        if version and not mgr.supports_version_pins():
             plan.append(
-                PlanEntry(pkg_name, pkg_id, mgr, "skip", options, "already installed")
+                PlanEntry(pkg_name, pkg_id, mgr, "unavailable", options, "pin_unsupported")
             )
+            continue
+
+        if check_installed:
+            if version:
+                try:
+                    installed_ver = mgr.get_installed_version(name)
+                except Exception:
+                    installed_ver = None
+                if installed_ver is None:
+                    # Distinguish not installed vs unknown
+                    try:
+                        present = mgr.is_installed(name)
+                    except Exception:
+                        present = False
+                    if present:
+                        plan.append(
+                            PlanEntry(pkg_name, pkg_id, mgr, "unavailable", options, "version_unknown")
+                        )
+                    else:
+                        plan.append(PlanEntry(pkg_name, pkg_id, mgr, "install", options))
+                elif versions_equal(installed_ver, version):
+                    plan.append(
+                        PlanEntry(pkg_name, pkg_id, mgr, "skip", options, "already installed")
+                    )
+                else:
+                    plan.append(
+                        PlanEntry(pkg_name, pkg_id, mgr, "unavailable", options, "version_mismatch")
+                    )
+            else:
+                # Unpinned: existing is_installed(name) path
+                try:
+                    already = mgr.is_installed(name)
+                except Exception:
+                    already = False
+                if already:
+                    plan.append(
+                        PlanEntry(pkg_name, pkg_id, mgr, "skip", options, "already installed")
+                    )
+                else:
+                    plan.append(PlanEntry(pkg_name, pkg_id, mgr, "install", options))
         else:
             plan.append(PlanEntry(pkg_name, pkg_id, mgr, "install", options))
 
@@ -398,6 +434,7 @@ def install_packages(
     from blacksmith.config.preferences import PreferredManagerOrder
     from blacksmith.utils.identifiers import validate_package_id
     from blacksmith.utils.os_detector import detect_os
+    from blacksmith.utils.package_ref import parse_package_ref, versions_equal
     from blacksmith.utils.tty import require_tty_or_yes
 
     tty_ok, tty_error = require_tty_or_yes(assume_yes, dry_run=dry_run)
@@ -575,7 +612,65 @@ def install_packages(
         if len(all_pkg_managers) > 1:
             print_info(f"{pkg_name}: Using {mgr.name} (preferred from available: {', '.join(all_pkg_managers)})")
 
-        if mgr.is_installed(pkg_id):
+        name, version = parse_package_ref(pkg_id)
+
+        # Check for pin support
+        if version and not mgr.supports_version_pins():
+            print_error(f"{pkg_name}: {mgr.name} does not support version pins")
+            not_found.append(pkg_name)
+            outcomes.append(PackageOutcome(
+                pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
+                message="pin_unsupported",
+            ))
+            continue
+
+        # Handle pinned packages
+        if version:
+            try:
+                # For brew, query versioned formula if pin is set
+                query_id = name
+                if mgr.name.lower() == "brew":
+                    query_id = f"{name}@{version}"
+                installed_ver = mgr.get_installed_version(query_id)
+            except Exception:
+                installed_ver = None
+
+            if installed_ver is None:
+                # Distinguish not installed vs unknown
+                try:
+                    present = mgr.is_installed(name)
+                except Exception:
+                    present = False
+                if present:
+                    print_error(f"{pkg_name}: installed but version unknown")
+                    not_found.append(pkg_name)
+                    outcomes.append(PackageOutcome(
+                        pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
+                        message="version_unknown",
+                    ))
+                    continue
+                else:
+                    # Not installed, proceed with install
+                    packages_to_install.append((pkg_name, pkg_id, mgr, "install"))
+            elif versions_equal(installed_ver, version):
+                # Version matches, skip
+                packages_to_skip.append(pkg_name)
+                outcomes.append(PackageOutcome(
+                    pkg_name, pkg_id, mgr.name, "skip", PackageStatus.SKIPPED,
+                    message="already installed",
+                ))
+                print_info(f"⏭  Skipping {pkg_name} (version {version} already installed)")
+            else:
+                # Version mismatch
+                print_error(f"{pkg_name}: version mismatch (installed: {installed_ver}, required: {version})")
+                not_found.append(pkg_name)
+                outcomes.append(PackageOutcome(
+                    pkg_name, pkg_id, mgr.name, "install", PackageStatus.FAILED,
+                    message="version_mismatch",
+                ))
+                continue
+        # Unpinned packages: existing logic
+        elif mgr.is_installed(name):
             if auto_skip:
                 packages_to_skip.append(pkg_name)
                 outcomes.append(PackageOutcome(
@@ -649,18 +744,48 @@ def install_packages(
                     # install or reinstall — one ID at a time for honest reporting
                     ok = mgr.install([pkg_id])
                     progress.update(task, advance=1)
-                    if ok and apply_mode and not mgr.is_installed(pkg_id):
-                        outcomes.append(PackageOutcome(
-                            pkg_name, pkg_id, mgr.name, action, PackageStatus.FAILED,
-                            message="post-install verify failed",
-                        ))
-                        print_error(f"Installed {pkg_name} but verify failed (not detected as installed)")
-                        if fail_fast:
-                            stopped_early = True
-                            print_warning("Fail-fast: stopping after verify failure.")
-                            break
-                        continue
+                    
+                    # Post-install verification
                     if ok:
+                        name, version = parse_package_ref(pkg_id)
+                        verify_failed = False
+                        verify_message = "post-install verify failed"
+                        
+                        # Apply mode or pins: verify after install (intentional fail-closed)
+                        if apply_mode or version:
+                            # For pinned packages, verify version match
+                            if version:
+                                try:
+                                    # For brew, query versioned formula if pin is set
+                                    query_id = name
+                                    if mgr.name.lower() == "brew":
+                                        query_id = f"{name}@{version}"
+                                    installed_ver = mgr.get_installed_version(query_id)
+                                except Exception:
+                                    installed_ver = None
+                                
+                                if installed_ver is None:
+                                    verify_failed = True
+                                    verify_message = "version_unknown"
+                                elif not versions_equal(installed_ver, version):
+                                    verify_failed = True
+                                    verify_message = "version_mismatch"
+                            # For apply_mode on unpinned, check basic presence
+                            elif apply_mode and not mgr.is_installed(name):
+                                verify_failed = True
+                        
+                        if verify_failed:
+                            outcomes.append(PackageOutcome(
+                                pkg_name, pkg_id, mgr.name, action, PackageStatus.FAILED,
+                                message=verify_message,
+                            ))
+                            print_error(f"Installed {pkg_name} but verify failed: {verify_message}")
+                            if fail_fast:
+                                stopped_early = True
+                                print_warning("Fail-fast: stopping after verify failure.")
+                                break
+                            continue
+                        
                         outcomes.append(PackageOutcome(
                             pkg_name, pkg_id, mgr.name, action, PackageStatus.OK,
                         ))
