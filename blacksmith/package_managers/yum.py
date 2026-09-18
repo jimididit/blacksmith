@@ -5,6 +5,7 @@ from typing import List, Dict
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
+from blacksmith.utils.package_ref import parse_package_ref
 
 logger = setup_logger(__name__)
 
@@ -57,9 +58,18 @@ class YumManager(PackageManager):
         if not packages:
             return True
         
+        # Parse package references and build install args
+        install_args = []
+        for pkg in packages:
+            name, version = parse_package_ref(pkg)
+            if version:
+                install_args.append(f"{name}-{version}")
+            else:
+                install_args.append(name)
+        
         try:
             # Don't capture output so sudo password prompts are visible
-            cmd = ["sudo", self.command, "install", "-y"] + packages
+            cmd = ["sudo", self.command, "install", "-y"] + install_args
             result = subprocess.run(
                 cmd,
                 timeout=600
@@ -75,8 +85,10 @@ class YumManager(PackageManager):
     def is_installed(self, package: str) -> bool:
         """Check if package is installed."""
         try:
+            # Strip pin if present
+            name, _ = parse_package_ref(package)
             result = subprocess.run(
-                ["rpm", "-q", package],
+                ["rpm", "-q", name],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -84,6 +96,25 @@ class YumManager(PackageManager):
             return result.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
+    
+    def supports_version_pins(self) -> bool:
+        """True if this manager can honor name|version install pins."""
+        return True
+    
+    def get_installed_version(self, package: str) -> str:
+        """Return installed version string, or None if missing/unknown."""
+        try:
+            result = subprocess.run(
+                ["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}", package],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+            return None
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
     
     def update_package(self, package: str) -> bool:
         """Update a specific package using yum/dnf upgrade."""
