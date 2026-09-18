@@ -14,6 +14,11 @@ def test_parse_only_first_pipe():
     assert parse_package_ref("foo|1.0|extra") == ("foo", "1.0|extra")
 
 
+def test_parse_empty_version():
+    # Empty version after | returns None (treated as no pin)
+    assert parse_package_ref("name|") == ("name", None)
+
+
 def test_versions_equal_strips_leading_v():
     assert versions_equal("v1.2.3", "1.2.3") is True
     assert versions_equal("V1.2.3", "1.2.3") is True

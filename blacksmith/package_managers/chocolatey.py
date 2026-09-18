@@ -131,12 +131,14 @@ class ChocolateyManager(PackageManager):
                 # Parse first line: name|version
                 first_line = result.stdout.strip().split('\n')[0]
                 if '|' in first_line:
-                    _, version = first_line.split('|', 1)
-                    return version
+                    name, version = first_line.split('|', 1)
+                    # Verify name matches requested package
+                    if name.lower() == package.lower():
+                        return version
                 else:
                     # Fallback for whitespace format: name version
                     parts = first_line.split()
-                    if len(parts) >= 2:
+                    if len(parts) >= 2 and parts[0].lower() == package.lower():
                         return parts[1]
             return None
         except (FileNotFoundError, subprocess.TimeoutExpired):

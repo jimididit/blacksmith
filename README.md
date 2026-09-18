@@ -268,6 +268,12 @@ packages:
 
 Supported for pins: chocolatey, apt, yum/dnf, winget, brew. A pin on snap, flatpak, scoop, or pacman fails closed with `pin_unsupported` (no install is attempted).
 
+**Version pin notes:**
+- Pin syntax `name|version` excludes `:` and `~` characters (epochs and pre-release markers; L1.2 follow-up)
+- apt and yum/dnf pins must match the manager's native version format exactly (e.g., full dpkg Version or rpm VERSION-RELEASE); short pins like `nmap|7.94` may not match installed `7.94-1`
+- brew pins install versioned formulae (`go@1.21`), not specific Cellar patch versions
+- winget pins parse the Version column from `winget list` output; ensure pin matches the reported version
+
 On `apply`, an installed package must match the pin exactly or Blacksmith fails (`version_mismatch` or `version_unknown`); it does not auto-upgrade to satisfy a pin. Unpinned IDs still install the latest available from the manager. Companion lockfiles are not in this release.
 
 Optional authenticity (minisign): authors sign with `minisign -Sm set.yaml` and distribute `set.yaml` + `set.yaml.minisig` + their `.pub`. Operators add the pubkey under `~/.config/blacksmith/trusted_keys/` (Linux/macOS), `%APPDATA%\blacksmith\trusted_keys\` (Windows), or pass `--pubkey`, then:

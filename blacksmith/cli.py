@@ -627,7 +627,11 @@ def install_packages(
         # Handle pinned packages
         if version:
             try:
-                installed_ver = mgr.get_installed_version(name)
+                # For brew, query versioned formula if pin is set
+                query_id = name
+                if mgr.name.lower() == "brew":
+                    query_id = f"{name}@{version}"
+                installed_ver = mgr.get_installed_version(query_id)
             except Exception:
                 installed_ver = None
 
@@ -747,11 +751,16 @@ def install_packages(
                         verify_failed = False
                         verify_message = "post-install verify failed"
                         
+                        # Apply mode or pins: verify after install (intentional fail-closed)
                         if apply_mode or version:
                             # For pinned packages, verify version match
                             if version:
                                 try:
-                                    installed_ver = mgr.get_installed_version(name)
+                                    # For brew, query versioned formula if pin is set
+                                    query_id = name
+                                    if mgr.name.lower() == "brew":
+                                        query_id = f"{name}@{version}"
+                                    installed_ver = mgr.get_installed_version(query_id)
                                 except Exception:
                                     installed_ver = None
                                 

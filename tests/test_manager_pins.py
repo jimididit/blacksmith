@@ -1,8 +1,11 @@
 from unittest.mock import Mock, patch
 from blacksmith.package_managers.apt import AptManager
+from blacksmith.package_managers.brew import BrewManager
 from blacksmith.package_managers.chocolatey import ChocolateyManager
 from blacksmith.package_managers.scoop import ScoopManager
 from blacksmith.package_managers.snap import SnapManager
+from blacksmith.package_managers.winget import WingetManager
+from blacksmith.package_managers.yum import YumManager
 
 
 def _ok(stdout="", stderr=""):
@@ -47,11 +50,6 @@ def test_apt_get_installed_version(mock_run):
     assert AptManager().get_installed_version("nmap") == "7.94-1"
 
 
-from blacksmith.package_managers.brew import BrewManager
-from blacksmith.package_managers.winget import WingetManager
-from blacksmith.package_managers.yum import YumManager
-
-
 @patch("blacksmith.package_managers.yum.subprocess.run")
 def test_yum_install_pinned_argv(mock_run):
     mock_run.return_value = _ok()
@@ -86,8 +84,9 @@ def test_winget_install_pinned_argv(mock_run):
 def test_winget_get_installed_version_parses_table(mock_run):
     mock_run.return_value = _ok(
         stdout=(
-            "Name Id Version\n"
-            "Git Git.Git 2.40.0\n"
+            "Name   Id       Version   Source\n"
+            "----   --       -------   ------\n"
+            "Git    Git.Git  2.40.0    winget\n"
         )
     )
     ver = WingetManager().get_installed_version("Git.Git")
@@ -105,3 +104,9 @@ def test_brew_install_pinned_argv(mock_run):
 def test_brew_get_installed_version(mock_run):
     mock_run.return_value = _ok(stdout="go 1.21.5\n")
     assert BrewManager().get_installed_version("go") == "1.21.5"
+
+
+@patch("blacksmith.package_managers.brew.subprocess.run")
+def test_brew_get_installed_version_versioned_formula(mock_run):
+    mock_run.return_value = _ok(stdout="go@1.21 1.21.5\n")
+    assert BrewManager().get_installed_version("go@1.21") == "1.21.5"

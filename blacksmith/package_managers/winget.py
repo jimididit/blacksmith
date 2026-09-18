@@ -3,7 +3,7 @@
 import re
 import subprocess
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
@@ -80,27 +80,27 @@ class WingetManager(PackageManager):
                     
                     # Show user-friendly error
                     if "No package found" in error_msg or "No applicable package" in error_msg:
-                        print_error(f"Package {package} not found in winget repository")
-                        print_warning(f"  Try: winget search {package.split('.')[0] if '.' in package else package}")
+                        print_error(f"Package {name} not found in winget repository")
+                        print_warning(f"  Try: winget search {name.split('.')[0] if '.' in name else name}")
                     elif "requires administrator" in error_msg.lower() or "elevated" in error_msg.lower() or "administrator" in error_msg.lower():
-                        print_error(f"Administrator privileges required for {package}")
+                        print_error(f"Administrator privileges required for {name}")
                         print_warning("  Please run Blacksmith as Administrator")
                     elif "hash" in error_msg.lower() or "security" in error_msg.lower():
-                        print_error(f"Security/hash verification failed for {package}")
+                        print_error(f"Security/hash verification failed for {name}")
                         print_warning("  You may need to update winget or allow hash override")
                     elif error_msg:
                         # Show first few lines of error
                         error_lines = [line.strip() for line in error_msg.split('\n') if line.strip()][:3]
                         if error_lines:
                             error_preview = ' | '.join(error_lines)
-                            print_error(f"Failed to install {package}: {error_preview[:200]}")
+                            print_error(f"Failed to install {name}: {error_preview[:200]}")
                         else:
-                            print_error(f"Failed to install {package} (check winget output above)")
+                            print_error(f"Failed to install {name} (check winget output above)")
                     else:
-                        print_error(f"Failed to install {package} (exit code: {result.returncode})")
+                        print_error(f"Failed to install {name} (exit code: {result.returncode})")
                     success = False
                 else:
-                    print_info(f"Successfully installed {package}")
+                    print_info(f"Successfully installed {name}")
             return success
         except subprocess.TimeoutExpired:
             logger.error("Winget install timed out")
@@ -128,7 +128,7 @@ class WingetManager(PackageManager):
         """True if this manager can honor name|version install pins."""
         return True
     
-    def get_installed_version(self, package: str) -> str:
+    def get_installed_version(self, package: str) -> Optional[str]:
         """Return installed version string, or None if missing/unknown."""
         try:
             result = subprocess.run(
@@ -141,13 +141,35 @@ class WingetManager(PackageManager):
                 return None
             
             # Parse Version column from table output
+            # Format: Name   Id   Version   [Available]   Source
             lines = result.stdout.strip().split('\n')
-            for line in lines:
+            
+            # Find header line to locate Version column index
+            header_idx = -1
+            version_col_idx = -1
+            for i, line in enumerate(lines):
+                if 'Version' in line and 'Id' in line:
+                    header_idx = i
+                    # Split header to find Version column position
+                    header_parts = line.split()
+                    try:
+                        version_col_idx = header_parts.index('Version')
+                    except ValueError:
+                        pass
+                    break
+            
+            # Parse data lines
+            for i, line in enumerate(lines):
+                if i <= header_idx + 1:  # Skip header and separator
+                    continue
                 if package in line:
-                    # Take the last whitespace-separated token on the data line
                     parts = line.split()
-                    if parts:
-                        return parts[-1]
+                    # If we found Version column, use that index
+                    if version_col_idx >= 0 and len(parts) > version_col_idx:
+                        return parts[version_col_idx]
+                    # Fallback: token after Id (parts[0]=Name, parts[1]=Id, parts[2]=Version)
+                    if len(parts) >= 3:
+                        return parts[2]
             return None
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return None

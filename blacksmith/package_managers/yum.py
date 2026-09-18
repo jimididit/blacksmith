@@ -1,7 +1,7 @@
 """YUM/DNF package manager implementation."""
 
 import subprocess
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
@@ -101,7 +101,7 @@ class YumManager(PackageManager):
         """True if this manager can honor name|version install pins."""
         return True
     
-    def get_installed_version(self, package: str) -> str:
+    def get_installed_version(self, package: str) -> Optional[str]:
         """Return installed version string, or None if missing/unknown."""
         try:
             result = subprocess.run(
@@ -110,7 +110,7 @@ class YumManager(PackageManager):
                 text=True,
                 timeout=5
             )
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
             return None
         except (FileNotFoundError, subprocess.TimeoutExpired):

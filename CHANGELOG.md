@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline package version pins: append `|version` to manager IDs (for example `apt: "nmap|7.94"`, `chocolatey: "git|2.40.0"`)
 - Pin-aware install and apply for chocolatey, apt, yum/dnf, winget, and brew; unsupported managers fail with `pin_unsupported`
 - Apply pin checks: exact match skips; mismatch or unknown version fails (`version_mismatch`, `version_unknown`) with no auto-upgrade
+- Version pin notes:
+  - Pin syntax `name|version` excludes `:` and `~` characters (epochs and pre-release markers; L1.2 follow-up)
+  - apt and yum/dnf pins must match the manager's native version format exactly (e.g., full dpkg Version or rpm VERSION-RELEASE)
+  - brew pins install versioned formulae (e.g., `go@1.21`), not specific Cellar patch versions
+  - winget pins parse the Version column from `winget list` output
 
 - Global `--json` for machine-readable output on `list`, `info`, `search`, `install`, and `apply`
 - Stable JSON envelope (`schema_version` 1): `command`, `ok`, `exit`, and either `data` or `error`

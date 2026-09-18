@@ -1,7 +1,7 @@
 """Homebrew package manager implementation (macOS)."""
 
 import subprocess
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from blacksmith.package_managers.base import PackageManager
 from blacksmith.utils.logger import setup_logger
@@ -87,10 +87,13 @@ class BrewManager(PackageManager):
         """True if this manager can honor name|version install pins."""
         return True
     
-    def get_installed_version(self, package: str) -> str:
-        """Return installed version string, or None if missing/unknown."""
+    def get_installed_version(self, package: str) -> Optional[str]:
+        """Return installed version string, or None if missing/unknown.
+        
+        Accepts bare names (go) or versioned formulae (go@1.21).
+        """
         try:
-            # Try formula first
+            # Try formula first (accepts bare name or versioned formula like go@1.21)
             result = subprocess.run(
                 ["brew", "list", "--versions", package],
                 capture_output=True,
@@ -98,12 +101,13 @@ class BrewManager(PackageManager):
                 timeout=15,
             )
             if result.returncode == 0:
-                # Parse line "name ver [ver...]" -> first version token after name
+                # Parse line "name ver [ver...]" or "name@ver cellar_ver [cellar_ver...]"
                 for line in result.stdout.strip().split('\n'):
                     if line.strip() and package in line:
                         parts = line.split()
+                        # For versioned formulae like "go@1.21 1.21.5", parts[0] is "go@1.21"
                         if len(parts) >= 2 and parts[0] == package:
-                            return parts[1]  # First version after name
+                            return parts[1]  # First version after formula name
             
             # Try cask if formula failed
             result = subprocess.run(
