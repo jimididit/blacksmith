@@ -27,39 +27,27 @@ custom_theme = Theme({
     "info": "#44FFD1",     # Use accent for info
 })
 
-# Configure console with encoding error handling for Windows
-# Use ASCII-safe symbols on Windows to avoid encoding issues
+# ASCII status tags on all platforms (log-safe, no emoji). Skip lines use
+# word prefixes in callers ("Skip: ...") rather than a status glyph.
+SYMBOL_SUCCESS = "[OK]"
+SYMBOL_ERROR = "[ERR]"
+SYMBOL_WARNING = "[WARN]"
+SYMBOL_INFO = "[INFO]"
+OS_BADGE = {
+    "windows": "Win",
+    "linux": "Lin",
+    "macos": "Mac",
+    "darwin": "Mac",
+}
+
 if sys.platform == "win32":
-    # Windows console may not support Unicode characters
     console = Console(theme=custom_theme, force_terminal=True, legacy_windows=True)
     err_console = Console(
         theme=custom_theme, force_terminal=True, legacy_windows=True, stderr=True
     )
-    # ASCII-safe symbols for Windows
-    SYMBOL_SUCCESS = "[OK]"
-    SYMBOL_ERROR = "[X]"
-    SYMBOL_WARNING = "[!]"
-    SYMBOL_INFO = "[i]"
-    OS_BADGE = {
-        "windows": "Win",
-        "linux": "Lin",
-        "macos": "Mac",
-        "darwin": "Mac",
-    }
 else:
     console = Console(theme=custom_theme)
     err_console = Console(theme=custom_theme, stderr=True)
-    # Unicode symbols for Unix-like systems
-    SYMBOL_SUCCESS = "✓"
-    SYMBOL_ERROR = "✗"
-    SYMBOL_WARNING = "⚠"
-    SYMBOL_INFO = "ℹ"
-    OS_BADGE = {
-        "windows": "🪟",
-        "linux": "🐧",
-        "macos": "🍎",
-        "darwin": "🍎",
-    }
 
 
 def print_panel(title: str, content: str, style: str = "primary") -> None:
@@ -145,19 +133,19 @@ def create_progress() -> Progress:
 
 def format_os_badge(os_name: str) -> str:
     """
-    Format OS name as a badge/emoji.
+    Format OS name as a short ASCII badge (Win / Lin / Mac).
     
     Args:
         os_name: OS name (windows, linux, macos, darwin)
         
     Returns:
-        Emoji or abbreviation for the OS
+        Abbreviation for the OS
     """
     return OS_BADGE.get(os_name.lower(), os_name[:3].upper())
 
 
 def os_legend_text() -> str:
-    """ASCII/emoji-safe OS legend for list output."""
+    """ASCII OS legend for list output."""
     return (
         f"Legend: {format_os_badge('windows')} Windows | "
         f"{format_os_badge('linux')} Linux | "

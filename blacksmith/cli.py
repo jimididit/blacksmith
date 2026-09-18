@@ -345,7 +345,7 @@ def show_installation_summary(
                 rows.append([pkg_name, f"[bold red]{reason}[/bold red]", "unavailable"])
                 plan_lines.append(f"unavailable: {pkg_name} ({reason})")
             else:
-                rows.append([pkg_name, "[bold red]❌ No compatible manager found[/bold red]"])
+                rows.append([pkg_name, "[bold red][ERR] No compatible manager found[/bold red]"])
     
     title_suffix = " (dry-run)" if dry_run else ""
     table = Table(
@@ -659,7 +659,7 @@ def install_packages(
                     pkg_name, pkg_id, mgr.name, "skip", PackageStatus.SKIPPED,
                     message="already installed",
                 ))
-                print_info(f"⏭  Skipping {pkg_name} (version {version} already installed)")
+                print_info(f"Skip: {pkg_name} (version {version} already installed)")
             else:
                 # Version mismatch
                 print_error(f"{pkg_name}: version mismatch (installed: {installed_ver}, required: {version})")
@@ -677,7 +677,7 @@ def install_packages(
                     pkg_name, pkg_id, mgr.name, "skip", PackageStatus.SKIPPED,
                     message="already installed",
                 ))
-                print_info(f"⏭  Skipping {pkg_name} (already installed)")
+                print_info(f"Skip: {pkg_name} (already installed)")
             else:
                 choices = [
                     questionary.Choice("Skip (keep current version)", "skip"),
@@ -696,7 +696,7 @@ def install_packages(
                     outcomes.append(PackageOutcome(
                         pkg_name, pkg_id, mgr.name, "skip", PackageStatus.SKIPPED,
                     ))
-                    print_info(f"⏭  Skipping {pkg_name}")
+                    print_info(f"Skip: {pkg_name}")
                 elif action == "reinstall":
                     packages_to_install.append((pkg_name, pkg_id, mgr, "reinstall"))
                 elif action == "update":
@@ -2137,10 +2137,10 @@ def create(ctx: click.Context, advanced: bool):
         action = questionary.select(
             "What would you like to do?",
             choices=[
-                questionary.Choice("🔍 Search for a package", "search"),
-                questionary.Choice("✏️  Enter package manually", "manual"),
-                questionary.Choice("✅ Finish and save set", "finish"),
-                questionary.Choice("❌ Cancel and exit (don't save)", "cancel")
+                questionary.Choice("Search for a package", "search"),
+                questionary.Choice("Enter package manually", "manual"),
+                questionary.Choice("Finish and save set", "finish"),
+                questionary.Choice("Cancel and exit (don't save)", "cancel")
             ],
             default="search"
         ).ask()
