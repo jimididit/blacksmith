@@ -33,6 +33,7 @@ ENV/
 .cursorIgnore
 .cursorindexingignore
 .specstory/
+.superpowers/
 /graphify-out/
 *.swp
 *.swo
