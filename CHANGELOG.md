@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Inline package version pins: append `|version` to manager IDs (for example `apt: "nmap|7.94"`, `chocolatey: "git|2.40.0"`)
+- Pin-aware install and apply for chocolatey, apt, yum/dnf, winget, and brew; unsupported managers fail with `pin_unsupported`
+- Apply pin checks: exact match skips; mismatch or unknown version fails (`version_mismatch`, `version_unknown`) with no auto-upgrade
+
 - Global `--json` for machine-readable output on `list`, `info`, `search`, `install`, and `apply`
 - Stable JSON envelope (`schema_version` 1): `command`, `ok`, `exit`, and either `data` or `error`
 - Unsupported commands and the bare interactive menu fail closed with `json_unsupported` (exit 2)

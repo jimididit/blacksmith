@@ -252,6 +252,24 @@ macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The 
 
 Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`.
 
+### Version pins (inline)
+
+Append `|version` to a manager package ID (the version segment must start with a digit):
+
+```yaml
+packages:
+  - name: nmap
+    managers:
+      apt: "nmap|7.94"
+  - name: git
+    managers:
+      chocolatey: "git|2.40.0"
+```
+
+Supported for pins: chocolatey, apt, yum/dnf, winget, brew. A pin on snap, flatpak, scoop, or pacman fails closed with `pin_unsupported` (no install is attempted).
+
+On `apply`, an installed package must match the pin exactly or Blacksmith fails (`version_mismatch` or `version_unknown`); it does not auto-upgrade to satisfy a pin. Unpinned IDs still install the latest available from the manager. Companion lockfiles are not in this release.
+
 Optional authenticity (minisign): authors sign with `minisign -Sm set.yaml` and distribute `set.yaml` + `set.yaml.minisig` + their `.pub`. Operators add the pubkey under `~/.config/blacksmith/trusted_keys/` (Linux/macOS), `%APPDATA%\blacksmith\trusted_keys\` (Windows), or pass `--pubkey`, then:
 
 ```bash

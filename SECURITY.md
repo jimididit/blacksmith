@@ -25,6 +25,8 @@ Blacksmith installs software by invoking local package managers (`apt`, `winget`
 
 A valid-looking package ID still installs if the manager resolves it. Sharing a set shares a list of package-manager operands, not a verified supply chain.
 
+Inline `|version` pins depend on the package manager and upstream repos reporting honest versions; they are not supply-chain proof.
+
 Local `audit.jsonl` is a DFIR aid on the operator machine. It is not a tamper-evident ledger; anyone with filesystem access can edit or delete it.
 
 ## Safe workflow for unknown YAML
