@@ -22,6 +22,7 @@ from blacksmith.json_out import (
     run_result_data,
 )
 from blacksmith.package_managers.detector import detect_available_managers, find_manager_for_package
+from blacksmith.utils.cli_examples import examples_epilog
 from blacksmith.package_managers.results import (
     InstallRunResult,
     PackageOutcome,
@@ -1206,7 +1207,15 @@ def emit_json_run_result(
     emit_json_run_error(command, exit_code, "install_failed", message, data=data)
 
 
-@click.group(invoke_without_command=True)
+@click.group(
+    invoke_without_command=True,
+    epilog=examples_epilog(
+        "blacksmith list",
+        "blacksmith install minimal --yes",
+        "blacksmith install --url https://example.com/set.yaml --dry-run",
+        "blacksmith create",
+    ),
+)
 @click.option(
     "--json",
     "json_mode",
@@ -1308,7 +1317,13 @@ def cli(ctx: click.Context, json_mode: bool):
             show_banner()
 
 
-@cli.command("list")
+@cli.command(
+    "list",
+    epilog=examples_epilog(
+        "blacksmith list",
+        "blacksmith --json list",
+    ),
+)
 @click.pass_context
 def list_sets(ctx: click.Context):
     """List available pre-made sets."""
@@ -1384,7 +1399,13 @@ def list_sets(ctx: click.Context):
     print_info(os_legend_text())
 
 
-@cli.command("audit")
+@cli.command(
+    "audit",
+    epilog=examples_epilog(
+        "blacksmith audit",
+        "blacksmith audit --last 20",
+    ),
+)
 @click.option(
     "--last",
     "last_n",
@@ -1443,7 +1464,14 @@ def audit_cmd(ctx: click.Context, last_n: int):
         print_warning(f"Skipped {corrupt} corrupt line(s).")
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith install minimal --yes",
+        "blacksmith install --file ./my-set.yaml --yes --dry-run",
+        "blacksmith install --url https://example.com/set.yaml --dry-run",
+        "blacksmith install --file ./my-set.yaml --require-signature --yes",
+    ),
+)
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", help="Path to custom config file")
 @click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
@@ -1554,7 +1582,14 @@ def install(
             cleanup_fetched(fetched)
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith apply minimal --yes",
+        "blacksmith apply --file ./my-set.yaml --yes --dry-run",
+        "blacksmith apply --url https://example.com/set.yaml --dry-run",
+        "blacksmith apply --file ./my-set.yaml --strict-trust --yes",
+    ),
+)
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", help="Path to custom config file")
 @click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
@@ -1668,7 +1703,12 @@ def apply(
             cleanup_fetched(fetched)
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith export minimal --format winget -o packages.json",
+        "blacksmith export --file ./my-set.yaml --format apt -o packages.txt",
+    ),
+)
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", type=click.Path(exists=True), help="Path to custom config file")
 @click.option("--format", "-F", "export_format", 
@@ -1764,7 +1804,13 @@ def export(ctx: click.Context, set_name: Optional[str], config_file: Optional[st
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith info minimal",
+        "blacksmith info --file ./my-set.yaml --limit 20 --no-pager",
+        "blacksmith --json info development",
+    ),
+)
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", type=click.Path(exists=True), help="Path to custom config file")
 @click.option(
@@ -1959,7 +2005,13 @@ def info(
     return
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith validate ./my-set.yaml",
+        "blacksmith validate ./my-set.yaml --strict-trust",
+        "blacksmith validate --url https://example.com/set.yaml",
+    ),
+)
 @click.argument("config_path", required=False, type=click.Path(exists=True))
 @click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
 @click.option("--strict-trust", is_flag=True, help="Fail closed when trust-scan findings are present (default: warn for local file)")
@@ -2032,7 +2084,13 @@ def validate(
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith search git",
+        "blacksmith search nmap --manager apt --limit 5",
+        "blacksmith --json search git --limit 5",
+    ),
+)
 @click.argument("query", required=False)
 @click.option("--manager", "-m", help="Filter by specific package manager")
 @click.option("--limit", "-l", default=10, help="Maximum number of results")
@@ -2226,7 +2284,12 @@ def search(
         )
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith create",
+        "blacksmith create --advanced",
+    ),
+)
 @click.option("--advanced", is_flag=True, help="Advanced mode: single-manager sets only")
 @click.pass_context
 def create(ctx: click.Context, advanced: bool):
@@ -2669,7 +2732,12 @@ def create(ctx: click.Context, advanced: bool):
         print_error("No output file specified.")
 
 
-@cli.command()
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith uninstall",
+        "blacksmith uninstall --yes",
+    ),
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 @click.pass_context

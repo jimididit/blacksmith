@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Examples:` sections on root `blacksmith --help` and every subcommand `--help`
 - `install` / `apply` / `validate --url https://…` for remote HTTPS set YAML (fetch to temp, existing `--file` trust path, REMOTE banner, content SHA-256; no persistent cache)
 - HTTPS-only fetch with SSRF literal-host blocks, timeout, and max body size; optional `{url}.minisig` sidecar or `--signature` path/URL with `--require-signature`
 - Offline trust scan on custom `--file` / remote `--url` sets (heuristics + optional/empty bundled denylist reserved for known-bad IDs); warn by default for local files; fail closed under `--strict-trust` or remote `--url` (`trust_scan_failed`); never claims "safe"
