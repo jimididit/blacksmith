@@ -64,7 +64,7 @@ def test_install_file_findings_warn_and_continue(mock_scan, mock_install):
         )
 
     assert result.exit_code == 0, result.output
-    assert "oversized" in result.output or "99 packages" in result.output
+    assert "oversized" in result.output
     assert "safe" not in result.output.lower()
     mock_install.assert_called_once()
     mock_scan.assert_called_once()
@@ -181,7 +181,7 @@ def test_validate_file_findings_warn_and_continue(mock_scan):
 
     assert result.exit_code == 0, result.output
     assert "valid" in result.output.lower()
-    assert "99 packages" in result.output or "oversized" in result.output
+    assert "oversized" in result.output
     assert "safe" not in result.output.lower()
 
 
@@ -231,3 +231,94 @@ def test_install_file_clean_scan_no_safe_badge(mock_scan, mock_install):
     assert "safe" not in result.output.lower()
     assert "trusted" not in result.output.lower()
     mock_install.assert_called_once()
+
+
+def _bundled_set_path(name: str) -> Path:
+    return Path(__file__).resolve().parents[1] / "blacksmith" / "sets" / name
+
+
+def test_validate_bundled_development_set_real_scan_clean():
+    """CLI path must run real scan_set (not mocked) on a shipped set."""
+    src = _bundled_set_path("development.yaml")
+    assert src.is_file()
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("development.yaml").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        result = runner.invoke(cli, ["validate", "development.yaml", "--strict-trust"])
+
+    assert result.exit_code == 0, result.output
+    assert "valid" in result.output.lower()
+    assert "trust scan failed" not in result.output.lower()
+    assert "safe" not in result.output.lower()
+
+
+def test_validate_hostile_markup_name_no_crash():
+    """Attacker-controlled package names must not raise MarkupError via print_warning."""
+    hostile = (
+        "name: hostile\n"
+        "packages:\n"
+        "  - name: \"[/bold]\"\n"
+        "    managers:\n"
+        "      apt: git\n"
+        "  - name: \"[/bold]\"\n"
+        "    managers:\n"
+        "      apt: git-core\n"
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("set.yaml").write_text(hostile, encoding="utf-8")
+        result = runner.invoke(cli, ["validate", "set.yaml"])
+
+    assert result.exception is None, result.output
+    assert result.exit_code == 0, result.output
+    assert "duplicate" in result.output.lower() or "[/bold]" in result.output
+    assert "MarkupError" not in result.output
+    assert "safe" not in result.output.lower()
+
+
+@patch("blacksmith.cli.install_packages")
+def test_json_install_hostile_markup_keeps_envelope(mock_install):
+    """--json must still emit a JSON envelope when findings embed hostile markup."""
+    mock_install.return_value = _ok_result()
+    hostile = (
+        "name: hostile\n"
+        "packages:\n"
+        "  - name: \"[/bold]\"\n"
+        "    managers:\n"
+        "      apt: git\n"
+        "  - name: \"[/bold]\"\n"
+        "    managers:\n"
+        "      apt: git-core\n"
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("set.yaml").write_text(hostile, encoding="utf-8")
+        result = runner.invoke(
+            cli,
+            ["--json", "install", "--file", "set.yaml", "--yes", "--dry-run"],
+        )
+
+    assert result.exception is None, result.output
+    assert result.exit_code == 0, result.output
+    body = json.loads(result.stdout.strip())
+    assert body["ok"] is True
+    assert "safe" not in json.dumps(body).lower()
+    mock_install.assert_called_once()
+
+
+@patch("blacksmith.cli.install_packages")
+@patch("blacksmith.cli.scan_set")
+def test_finding_code_visible_in_human_output(mock_scan, mock_install):
+    mock_scan.return_value = _finding_result()
+    mock_install.return_value = _ok_result()
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        _write_set(Path("set.yaml"))
+        result = runner.invoke(
+            cli, ["install", "--file", "set.yaml", "--dry-run", "--yes"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "[oversized]" in result.output
+    assert "safe" not in result.output.lower()

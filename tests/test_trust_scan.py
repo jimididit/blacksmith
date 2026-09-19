@@ -1,6 +1,11 @@
 """Unit tests for offline trust heuristics scan (L4.4)."""
 
+from pathlib import Path
+
+from blacksmith.config.loader import load_custom_config
 from blacksmith.trust.scan import Finding, ScanResult, scan_set
+
+_SETS_DIR = Path(__file__).resolve().parents[1] / "blacksmith" / "sets"
 
 
 def _pkg(name: str, **managers: str) -> dict:
@@ -18,6 +23,19 @@ def test_scan_clean_minimal_config():
     result = scan_set(cfg)
     assert result.ok
     assert result.findings == []
+
+
+def test_bundled_sets_scan_clean():
+    paths = sorted(_SETS_DIR.glob("*.yaml"))
+    assert paths, "expected bundled set YAML files"
+    for path in paths:
+        cfg = load_custom_config(path)
+        assert cfg is not None, f"failed to load {path.name}"
+        result = scan_set(cfg)
+        assert result.ok, (
+            f"{path.name} should scan clean; findings="
+            f"{[(f.code, f.message) for f in result.findings]}"
+        )
 
 
 def test_oversized_package_count():
@@ -48,16 +66,50 @@ def test_denylist_case_insensitive():
     assert any(f.code == "denylist" for f in result.findings)
 
 
-def test_manager_mix_without_managers_supported():
+def test_manager_mix_requires_high_manager_and_package_counts():
+    """Seven managers / modest size is normal cross-platform, not a dump."""
     mgrs = ("apt", "pacman", "yum", "dnf", "winget", "chocolatey", "scoop")
     packages = [_pkg(f"p{i}", **{mgrs[i]: f"id{i}"}) for i in range(len(mgrs))]
+    result = scan_set(_config(*packages))
+    assert not any(f.code == "manager_mix" for f in result.findings)
+
+
+def test_manager_mix_fires_on_absurd_kitchen_sink():
+    mgrs = (
+        "apt",
+        "pacman",
+        "yum",
+        "dnf",
+        "winget",
+        "chocolatey",
+        "scoop",
+        "snap",
+        "flatpak",
+    )
+    packages = []
+    for i in range(41):
+        mgr = mgrs[i % len(mgrs)]
+        packages.append(_pkg(f"p{i}", **{mgr: f"id{i}"}))
+    # Ensure all nine managers appear.
+    for i, mgr in enumerate(mgrs):
+        packages[i] = _pkg(f"seed{i}", **{mgr: f"seed-id-{i}"})
     result = scan_set(_config(*packages))
     assert any(f.code == "manager_mix" for f in result.findings)
 
 
 def test_manager_mix_skipped_when_managers_supported_declared():
-    mgrs = ("apt", "pacman", "yum", "dnf", "winget", "chocolatey", "scoop")
-    packages = [_pkg(f"p{i}", **{mgrs[i]: f"id{i}"}) for i in range(len(mgrs))]
+    mgrs = (
+        "apt",
+        "pacman",
+        "yum",
+        "dnf",
+        "winget",
+        "chocolatey",
+        "scoop",
+        "snap",
+        "flatpak",
+    )
+    packages = [_pkg(f"p{i}", **{mgrs[i % len(mgrs)]: f"id{i}"}) for i in range(41)]
     cfg = _config(*packages, managers_supported=list(mgrs))
     result = scan_set(cfg)
     assert not any(f.code == "manager_mix" for f in result.findings)
@@ -89,9 +141,22 @@ def test_junk_id_smell_long_encoded_id():
     assert any(f.code == "junk_id" for f in result.findings)
 
 
-def test_junk_id_smell_name_id_length_mismatch():
+def test_junk_id_skips_dotted_and_path_ids():
+    """Winget / reverse-DNS / Flatpak-style IDs must never flag as junk."""
+    cases = [
+        _pkg("vscode", winget="Microsoft.VisualStudioCode"),
+        _pkg("Code", flatpak="com.visualstudio.code-oss"),
+        _pkg("Notes", flatpak="com.github.philip_scott.notes-up"),
+        _pkg("tool", scoop="publisher/tool-name-with-path"),
+        _pkg("Short", winget="a.b.c.d.e.f.g.h.i.j.k.l.mnop"),  # 24–31 dotted
+    ]
+    result = scan_set(_config(*cases))
+    assert not any(f.code == "junk_id" for f in result.findings)
+
+
+def test_junk_id_smell_name_id_length_mismatch_without_dots():
     cfg = _config(
-        _pkg("git", winget="Publisher.Very.Long.Package.Identifier.Name.Here"),
+        _pkg("git", winget="verylongopaqueidentifierwithoutseparators"),
     )
     result = scan_set(cfg)
     assert any(f.code == "junk_id" for f in result.findings)

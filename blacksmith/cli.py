@@ -977,8 +977,14 @@ def apply_trust_scan(
     if result.ok:
         return
 
+    from rich.markup import escape
+
     for finding in result.findings:
-        print_warning(f"Trust scan [{finding.code}]: {finding.message}")
+        # Escape attacker-controlled strings and bracketed codes so rich does not
+        # treat them as markup (MarkupError / stripped finding codes).
+        print_warning(
+            f"Trust scan {escape(f'[{finding.code}]')}: {escape(finding.message)}"
+        )
 
     if not (strict_trust or remote):
         return

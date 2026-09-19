@@ -258,7 +258,7 @@ macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The 
 
 Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` or `--url` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`. Remote `--url` sets print a REMOTE banner with the final HTTPS URL and content SHA-256; signing remains opt-in via `--require-signature`.
 
-After a successful load of custom `--file` or remote `--url` YAML, Blacksmith runs an offline trust scan (size, denylist hits, manager mix, junk IDs, conflicting duplicates). Findings print as warnings. Local `--file` continues by default; pass `--strict-trust` to fail closed. Remote `--url` always fails closed when findings are present. Built-in set names are not scanned. The scan never claims a set is "safe" or "trusted" - it is not a malware scanner.
+After a successful load of custom `--file` or remote `--url` YAML, Blacksmith runs an offline trust scan (size, optional/empty bundled denylist reserved for known-bad IDs, manager mix, junk IDs, conflicting duplicates). Findings print as warnings. Local `--file` continues by default; pass `--strict-trust` to fail closed. Remote `--url` always fails closed when findings are present. Built-in set names are not scanned. The scan never claims a set is "safe" or "trusted" - it is not a malware scanner.
 
 ```bash
 blacksmith install --file path/to/set.yaml --strict-trust --yes

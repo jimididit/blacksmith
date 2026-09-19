@@ -9,11 +9,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
-# Bundled denylist (lowercase package IDs). Empty in v1; tests may inject via scan_set().
+# Optional/empty bundled denylist; reserved for known-bad IDs. Tests may inject via scan_set().
 _DENYLIST: FrozenSet[str] = frozenset()
 
-# H2: distinct managers used across the set without managers_supported declared.
-_MANAGER_MIX_THRESHOLD = 6
+# H2: absurd kitchen-sink only — normal cross-platform sets use many of the ~10 managers.
+_MANAGER_MIX_MIN_MANAGERS = 8
+_MANAGER_MIX_MIN_PACKAGES = 40
 
 # H3: lightweight junk / mismatch thresholds.
 _JUNK_MIN_ID_LEN = 32
@@ -117,13 +118,20 @@ def _check_manager_mix(
             if isinstance(mgr_name, str):
                 managers_used.add(mgr_name.lower())
 
-    if len(managers_used) > _MANAGER_MIX_THRESHOLD:
+    # Require both signals so legitimate cross-platform sets (7–8 managers, modest
+    # package counts) stay clean; only absurd dumps escalate.
+    if (
+        len(managers_used) > _MANAGER_MIX_MIN_MANAGERS
+        and len(packages) > _MANAGER_MIX_MIN_PACKAGES
+    ):
         findings.append(
             Finding(
                 code="manager_mix",
                 message=(
-                    f"Set uses {len(managers_used)} distinct package managers "
-                    f"without managers_supported (threshold {_MANAGER_MIX_THRESHOLD}); "
+                    f"Set uses {len(managers_used)} distinct package managers across "
+                    f"{len(packages)} packages without managers_supported "
+                    f"(thresholds >{_MANAGER_MIX_MIN_MANAGERS} managers and "
+                    f">{_MANAGER_MIX_MIN_PACKAGES} packages); "
                     "may be an unfocused kitchen-sink dump."
                 ),
             )
@@ -199,10 +207,8 @@ def _check_junk_ids(packages: List[Any], findings: List[Finding]) -> None:
 
 def _looks_like_junk_id(pkg_id: str, display_name: str) -> bool:
     base_id = pkg_id.split("|", 1)[0]
-    if len(base_id) < _JUNK_MIN_ID_LEN:
-        name_len = max(len(display_name.strip()), 1)
-        if len(base_id) >= name_len * _NAME_ID_LENGTH_RATIO and len(base_id) >= 24:
-            return True
+    # Winget / Flatpak / reverse-DNS / path-style IDs are expected shapes.
+    if "." in base_id or "/" in base_id:
         return False
 
     if len(base_id) >= _JUNK_PURE_ALNUM_MIN_LEN and re.fullmatch(
@@ -212,9 +218,11 @@ def _looks_like_junk_id(pkg_id: str, display_name: str) -> bool:
 
     name_len = max(len(display_name.strip()), 1)
     if len(base_id) >= name_len * _NAME_ID_LENGTH_RATIO and len(base_id) >= 24:
-        if "." not in base_id and "/" not in base_id:
-            return True
-        if len(base_id) >= 40:
+        return True
+
+    if len(base_id) >= _JUNK_MIN_ID_LEN:
+        # Long opaque tokens without separators still look suspicious.
+        if re.fullmatch(r"[A-Za-z0-9_-]+", base_id):
             return True
 
     return False

@@ -39,7 +39,7 @@ blacksmith install --file path/to/set.yaml --dry-run
 blacksmith install --file path/to/set.yaml --strict-trust --yes
 ```
 
-The offline trust scan flags oversized sets, denylist hits, kitchen-sink manager mixes, junk-looking IDs, and conflicting duplicate names. It does **not** scan package binaries for malware, check upstream reputation, or prove a set is safe. Absence of findings is not a green light.
+The offline trust scan flags oversized sets, optional denylist hits (bundled denylist is empty; reserved for known-bad IDs), kitchen-sink manager mixes, junk-looking IDs, and conflicting duplicate names. It does **not** scan package binaries for malware, check upstream reputation, or prove a set is safe. Absence of findings is not a green light.
 
 Remote HTTPS sets use the same trust path after a one-shot fetch to a temp file (deleted when the command finishes). Prefer `blacksmith validate --url https://…` and `install --url … --dry-run` before `--yes`. A successful fetch does not mean the YAML is safe - treat it like `--file`. Remote `--url` fails closed when the trust scan reports findings (same as `--strict-trust` locally). Future L4.2 may hard-gate unsigned remote sets; today signatures stay opt-in with `--require-signature`.
 
