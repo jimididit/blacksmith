@@ -979,12 +979,15 @@ def apply_trust_scan(
 
     from rich.markup import escape
 
-    for finding in result.findings:
-        # Escape attacker-controlled strings and bracketed codes so rich does not
-        # treat them as markup (MarkupError / stripped finding codes).
-        print_warning(
-            f"Trust scan {escape(f'[{finding.code}]')}: {escape(finding.message)}"
-        )
+    # Human mode: print findings. JSON mode: keep stdout clean (findings land in
+    # the error envelope when escalate; warn-only JSON omits them by design).
+    if not json_mode:
+        for finding in result.findings:
+            # Escape attacker-controlled strings and bracketed codes so rich does
+            # not treat them as markup (MarkupError / stripped finding codes).
+            print_warning(
+                f"Trust scan {escape(f'[{finding.code}]')}: {escape(finding.message)}"
+            )
 
     if not (strict_trust or remote):
         return
