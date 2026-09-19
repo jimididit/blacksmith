@@ -7,12 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-18
+
+Minor release: remote set URLs, offline trust scan, fuller `info` listing, and help Examples.
+
 ### Added
 
-- `Examples:` sections on root `blacksmith --help` and every subcommand `--help`
 - `install` / `apply` / `validate --url https://…` for remote HTTPS set YAML (fetch to temp, existing `--file` trust path, REMOTE banner, content SHA-256; no persistent cache)
 - HTTPS-only fetch with SSRF literal-host blocks, timeout, and max body size; optional `{url}.minisig` sidecar or `--signature` path/URL with `--require-signature`
 - Offline trust scan on custom `--file` / remote `--url` sets (heuristics + optional/empty bundled denylist reserved for known-bad IDs); warn by default for local files; fail closed under `--strict-trust` or remote `--url` (`trust_scan_failed`); never claims "safe"
+- `Examples:` sections on root `blacksmith --help` and every subcommand `--help`
+- `info` shows the full package list by default, with optional `--limit`, `--pager` / `--no-pager`
 
 ## [0.5.0] - 2026-09-18
 
@@ -147,7 +152,8 @@ First public release.
 - Winget search Unicode and older-client parsing
 
 
-[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jimididit/blacksmith/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jimididit/blacksmith/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jimididit/blacksmith/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jimididit/blacksmith/compare/v0.3.0...v0.4.0
