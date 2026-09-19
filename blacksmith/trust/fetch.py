@@ -117,6 +117,17 @@ def _read_limited_response(resp, max_bytes: int) -> Tuple[bytes, str]:
     return b"".join(parts), hasher.hexdigest()
 
 
+def fetch_https_bytes(
+    url: str,
+    *,
+    timeout_s: int = DEFAULT_TIMEOUT_S,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+) -> Tuple[bytes, str, str]:
+    """Fetch HTTPS body; return (body, sha256 hex, final_url)."""
+    normalized = validate_https_url(url)
+    return _fetch_bytes(normalized, timeout_s=timeout_s, max_bytes=max_bytes)
+
+
 def _fetch_bytes(
     url: str,
     *,

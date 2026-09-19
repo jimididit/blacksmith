@@ -1,0 +1,28 @@
+---
+name: "Network Recon"
+description: "Small network discovery and connectivity toolkit"
+target_os: [windows, linux]
+packages:
+  - name: nmap
+    managers:
+      apt: nmap
+      pacman: nmap
+      yum: nmap
+      winget: Insecure.Nmap
+      chocolatey: nmap
+      scoop: nmap
+
+  - name: netcat
+    managers:
+      apt: netcat
+      pacman: gnu-netcat
+      yum: nc
+      chocolatey: netcat
+      scoop: netcat
+
+  - name: tcpdump
+    managers:
+      apt: tcpdump
+      pacman: tcpdump
+      yum: tcpdump
+      chocolatey: tcpdump

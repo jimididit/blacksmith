@@ -1,0 +1,30 @@
+---
+name: "DFIR Triage"
+description: "Network capture and host triage tools for incident response"
+target_os: [windows, linux]
+packages:
+  - name: nmap
+    managers:
+      apt: nmap
+      pacman: nmap
+      yum: nmap
+      winget: Insecure.Nmap
+      chocolatey: nmap
+      scoop: nmap
+
+  - name: wireshark
+    managers:
+      apt: wireshark
+      pacman: wireshark
+      yum: wireshark
+      snap: wireshark
+      winget: WiresharkFoundation.Wireshark
+      chocolatey: wireshark
+      scoop: wireshark
+
+  - name: tcpdump
+    managers:
+      apt: tcpdump
+      pacman: tcpdump
+      yum: tcpdump
+      chocolatey: tcpdump

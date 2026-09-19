@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "dfir-triage",
+      "title": "DFIR Triage",
+      "description": "Network capture and host triage tools for incident response",
+      "url": "https://raw.githubusercontent.com/jimididit/blacksmith/main/blacksmith/gallery/sets/dfir-triage.yaml",
+      "os": ["windows", "linux"],
+      "tags": ["dfir", "cybersecurity"],
+      "provenance": "official"
+    },
+    {
+      "id": "web-assessment",
+      "title": "Web Assessment",
+      "description": "Core tools for web application security assessment",
+      "url": "https://raw.githubusercontent.com/jimididit/blacksmith/main/blacksmith/gallery/sets/web-assessment.yaml",
+      "os": ["windows", "linux"],
+      "tags": ["web-security", "cybersecurity"],
+      "provenance": "official"
+    },
+    {
+      "id": "network-recon",
+      "title": "Network Recon",
+      "description": "Small network discovery and connectivity toolkit",
+      "url": "https://raw.githubusercontent.com/jimididit/blacksmith/main/blacksmith/gallery/sets/network-recon.yaml",
+      "os": ["windows", "linux"],
+      "tags": ["recon", "cybersecurity"],
+      "provenance": "official"
+    }
+  ]
+}

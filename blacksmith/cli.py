@@ -14,6 +14,8 @@ from blacksmith import __version__
 from blacksmith.audit.log import record_audit
 from blacksmith.config.loader import load_custom_config, load_set, list_available_sets
 from blacksmith.config.validator import validate_and_report
+from blacksmith.gallery.index import get_entry, load_index
+from blacksmith.gallery.schema import GalleryError
 from blacksmith.json_out import (
     JSON_COMMANDS,
     emit_error,
@@ -1418,6 +1420,236 @@ def list_sets(ctx: click.Context):
     console.print()
     from blacksmith.utils.ui import os_legend_text
     print_info(os_legend_text())
+
+
+def _gallery_entry_data(entry) -> dict:
+    """Return the stable JSON representation of a gallery entry."""
+    return {
+        "id": entry.id,
+        "title": entry.title,
+        "description": entry.description,
+        "url": entry.url,
+        "signature_url": entry.signature_url,
+        "os": entry.os,
+        "tags": entry.tags,
+        "provenance": entry.provenance,
+    }
+
+
+def _load_gallery_entry(ctx: click.Context, entry_id: str, *, refresh: bool = False):
+    """Resolve a gallery entry and report stable CLI errors."""
+    try:
+        return get_entry(load_index(refresh=refresh), entry_id)
+    except GalleryError as exc:
+        message = (
+            f"Gallery entry '{entry_id}' not found."
+            if exc.code == "not_found"
+            else str(exc)
+        )
+        if is_json_mode(ctx):
+            emit_error(
+                command=f"gallery.{ctx.info_name}",
+                exit_code=1,
+                code=exc.code or "gallery_error",
+                message=message,
+            )
+        else:
+            print_error(message)
+        raise click.exceptions.Exit(1)
+
+
+@cli.group(
+    epilog=examples_epilog(
+        "blacksmith gallery list",
+        "blacksmith gallery list --refresh",
+        "blacksmith gallery info dfir-triage",
+        "blacksmith gallery install dfir-triage --dry-run",
+    ),
+)
+def gallery():
+    """Browse and install curated remote sets from the gallery index."""
+
+
+@gallery.command("list")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
+@click.pass_context
+def gallery_list(ctx: click.Context, refresh: bool):
+    """List sets in the curated gallery."""
+    try:
+        index = load_index(refresh=refresh)
+    except GalleryError as exc:
+        if is_json_mode(ctx):
+            emit_error(
+                command="gallery.list",
+                exit_code=1,
+                code=exc.code or "gallery_error",
+                message=str(exc),
+            )
+        else:
+            print_error(str(exc))
+        raise click.exceptions.Exit(1)
+
+    entries = [_gallery_entry_data(entry) for entry in index.entries]
+    if is_json_mode(ctx):
+        emit_ok(command="gallery.list", exit_code=0, data={"entries": entries})
+        return
+
+    rows = [
+        [
+            entry.id,
+            entry.title,
+            ", ".join(entry.os),
+            ", ".join(entry.tags),
+            entry.provenance,
+        ]
+        for entry in index.entries
+    ]
+    print_table(
+        "Gallery",
+        ["ID", "Title", "OS", "Tags", "Provenance"],
+        rows,
+    )
+
+
+@gallery.command("info")
+@click.argument("entry_id")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
+@click.pass_context
+def gallery_info(ctx: click.Context, entry_id: str, refresh: bool):
+    """Show details for a gallery set."""
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
+    data = _gallery_entry_data(entry)
+    if is_json_mode(ctx):
+        emit_ok(command="gallery.info", exit_code=0, data=data)
+        return
+
+    print_panel(f"Gallery: {entry.title}", entry.description)
+    print_info(f"ID: {entry.id}")
+    print_info(f"URL: {entry.url}")
+    if entry.signature_url:
+        print_info(f"Signature: {entry.signature_url}")
+    print_info(f"OS: {', '.join(entry.os)}")
+    print_info(f"Tags: {', '.join(entry.tags)}")
+    print_info(f"Provenance: {entry.provenance}")
+
+
+@gallery.command("install")
+@click.argument("entry_id")
+@click.option("--skip-installed", "-s", is_flag=True, help="Skip already installed packages")
+@click.option("--prefer", "-p", "prefer_manager", help="Prefer a package manager")
+@click.option("--force", is_flag=True, help="Force installation despite OS mismatch")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts")
+@click.option("--dry-run", is_flag=True, help="Show what would be installed")
+@click.option("--fail-fast", is_flag=True, help="Stop after the first failure")
+@click.option("--require-signature", is_flag=True, help="Require a valid signature")
+@click.option("--allow-unsigned", is_flag=True, help="Allow an unsigned gallery set")
+@click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key")
+@click.option("--strict-trust", is_flag=True, help="Fail on trust-scan findings")
+@click.option("--no-audit", is_flag=True, help="Do not write to the audit log")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
+@click.pass_context
+def gallery_install(
+    ctx: click.Context,
+    entry_id: str,
+    skip_installed: bool,
+    prefer_manager: Optional[str],
+    force: bool,
+    assume_yes: bool,
+    dry_run: bool,
+    fail_fast: bool,
+    require_signature: bool,
+    allow_unsigned: bool,
+    pubkey_file: Optional[str],
+    strict_trust: bool,
+    no_audit: bool,
+    refresh: bool,
+):
+    """Install a set from the gallery."""
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
+    return ctx.invoke(
+        install,
+        set_name=None,
+        config_file=None,
+        config_url=entry.url,
+        skip_installed=skip_installed,
+        prefer_manager=prefer_manager,
+        force=force,
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        fail_fast=fail_fast,
+        require_signature=require_signature,
+        allow_unsigned=allow_unsigned,
+        signature_file=entry.signature_url,
+        pubkey_file=pubkey_file,
+        strict_trust=strict_trust,
+        no_audit=no_audit,
+    )
+
+
+@gallery.command("apply")
+@click.argument("entry_id")
+@click.option("--prefer", "-p", "prefer_manager", help="Prefer a package manager")
+@click.option("--force", is_flag=True, help="Force apply despite OS mismatch")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts")
+@click.option("--dry-run", is_flag=True, help="Show what would change")
+@click.option("--fail-fast", is_flag=True, help="Stop after the first failure")
+@click.option("--require-signature", is_flag=True, help="Require a valid signature")
+@click.option("--allow-unsigned", is_flag=True, help="Allow an unsigned gallery set")
+@click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key")
+@click.option("--strict-trust", is_flag=True, help="Fail on trust-scan findings")
+@click.option("--no-audit", is_flag=True, help="Do not write to the audit log")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
+@click.pass_context
+def gallery_apply(
+    ctx: click.Context,
+    entry_id: str,
+    prefer_manager: Optional[str],
+    force: bool,
+    assume_yes: bool,
+    dry_run: bool,
+    fail_fast: bool,
+    require_signature: bool,
+    allow_unsigned: bool,
+    pubkey_file: Optional[str],
+    strict_trust: bool,
+    no_audit: bool,
+    refresh: bool,
+):
+    """Apply a gallery set as desired state."""
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
+    return ctx.invoke(
+        apply,
+        set_name=None,
+        config_file=None,
+        config_url=entry.url,
+        prefer_manager=prefer_manager,
+        force=force,
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        fail_fast=fail_fast,
+        require_signature=require_signature,
+        allow_unsigned=allow_unsigned,
+        signature_file=entry.signature_url,
+        pubkey_file=pubkey_file,
+        strict_trust=strict_trust,
+        no_audit=no_audit,
+    )
+
+
+@gallery.command("validate")
+@click.argument("entry_id")
+@click.option("--strict-trust", is_flag=True, help="Fail on trust-scan findings")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
+@click.pass_context
+def gallery_validate(ctx: click.Context, entry_id: str, strict_trust: bool, refresh: bool):
+    """Validate a gallery set."""
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
+    return ctx.invoke(
+        validate,
+        config_path=None,
+        config_url=entry.url,
+        strict_trust=strict_trust,
+    )
 
 
 @cli.command(
