@@ -124,6 +124,114 @@ def test_install_url_require_signature_fails_closed(
     mock_cleanup.assert_called_once_with(fetched)
 
 
+@patch("blacksmith.cli.cleanup_fetched")
+@patch("blacksmith.cli.load_custom_config")
+@patch("blacksmith.trust.verify.verify_set_signature")
+@patch("blacksmith.cli.fetch_set_url")
+def test_install_url_unsigned_fails_with_allow_unsigned_hint(
+    mock_fetch, mock_verify, mock_load, mock_cleanup, tmp_path
+):
+    fetched = _fetched(tmp_path)
+    mock_fetch.return_value = fetched
+    mock_verify.return_value = Mock(ok=False, message="Signature file not found")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["install", "--url", "https://example.com/a.yaml", "--yes"],
+    )
+
+    assert result.exit_code == 1
+    assert "--allow-unsigned" in result.output
+    assert "accept" in result.output.lower() and "risk" in result.output.lower()
+    mock_load.assert_not_called()
+    mock_cleanup.assert_called_once_with(fetched)
+    assert mock_fetch.call_args.kwargs.get("fetch_sidecar") is True
+
+
+@patch("blacksmith.cli.cleanup_fetched")
+@patch("blacksmith.cli.install_packages")
+@patch("blacksmith.cli.load_custom_config")
+@patch("blacksmith.trust.verify.verify_set_signature")
+@patch("blacksmith.cli.fetch_set_url")
+def test_install_url_allow_unsigned_proceeds(
+    mock_fetch, mock_verify, mock_load, mock_install, mock_cleanup, tmp_path
+):
+    fetched = _fetched(tmp_path)
+    mock_fetch.return_value = fetched
+    mock_load.return_value = {"name": "remote", "packages": []}
+    mock_install.return_value = _ok_result()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "install",
+            "--url",
+            "https://example.com/a.yaml",
+            "--allow-unsigned",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "allow-unsigned" in result.output.lower()
+    mock_verify.assert_not_called()
+    mock_load.assert_called_once()
+    mock_install.assert_called_once()
+    mock_cleanup.assert_called_once_with(fetched)
+    assert mock_fetch.call_args.kwargs.get("fetch_sidecar") is False
+
+
+def test_install_url_require_signature_and_allow_unsigned_mutex():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "install",
+            "--url",
+            "https://example.com/a.yaml",
+            "--require-signature",
+            "--allow-unsigned",
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output.lower()
+
+
+def test_allow_unsigned_without_url():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["install", "minimal", "--allow-unsigned", "--yes"])
+    assert result.exit_code == 2
+    assert "--allow-unsigned only applies with --url" in result.output
+
+
+@patch("blacksmith.cli.cleanup_fetched")
+@patch("blacksmith.cli.load_custom_config")
+@patch("blacksmith.trust.verify.verify_set_signature")
+@patch("blacksmith.cli.fetch_set_url")
+def test_install_url_unsigned_json_unsigned_remote(
+    mock_fetch, mock_verify, mock_load, mock_cleanup, tmp_path
+):
+    fetched = _fetched(tmp_path)
+    mock_fetch.return_value = fetched
+    mock_verify.return_value = Mock(ok=False, message="Signature file not found")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "install", "--url", "https://example.com/a.yaml", "--yes"],
+    )
+
+    assert result.exit_code == 1
+    body = json.loads(result.stdout.strip())
+    assert body["error"]["code"] == "unsigned_remote"
+    assert "--allow-unsigned" in body["error"]["message"]
+    mock_load.assert_not_called()
+    mock_cleanup.assert_called_once_with(fetched)
+
+
 def test_require_signature_without_file_or_url_updated_message():
     runner = CliRunner()
     result = runner.invoke(cli, ["install", "minimal", "--require-signature"])
