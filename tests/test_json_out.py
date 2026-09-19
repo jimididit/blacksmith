@@ -111,6 +111,18 @@ def test_json_unsupported_commands_fail_closed(command, args):
     assert body["command"] == command
 
 
+def test_json_sign_is_unsupported(tmp_path):
+    config = tmp_path / "set.yaml"
+    config.write_text("name: example\npackages: []\n", encoding="utf-8")
+
+    result = _runner().invoke(cli, ["--json", "sign", str(config)])
+
+    assert result.exit_code == 2
+    body = _parse_cli_json(result)
+    assert body["error"]["code"] == "json_unsupported"
+    assert body["command"] == "sign"
+
+
 def test_json_validate_is_unsupported(tmp_path):
     config = tmp_path / "set.yaml"
     config.write_text("name: example\npackages: []\n", encoding="utf-8")

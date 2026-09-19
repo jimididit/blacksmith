@@ -50,8 +50,8 @@ def verify_set_signature(
             ok=False,
             message=(
                 f"Signature file not found: {sig}. "
-                "Create one with: minisign -Sm <file> "
-                "or pass --signature PATH."
+                "Create one with: blacksmith sign <file> "
+                "or minisign -Sm <file>, or pass --signature PATH."
             ),
         )
 

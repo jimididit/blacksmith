@@ -121,6 +121,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith apply --file path.yaml --require-signature` | Require minisign verify before apply |
 | `blacksmith apply --url https://… --yes` | Apply remote HTTPS set YAML ([untrusted](#trust); REMOTE) |
 | `blacksmith create` / `create --advanced` | Create a set |
+| `blacksmith sign <path.yaml>` | Create detached minisign signature (`<path>.minisig`) |
 | `blacksmith search <query> [--manager name]` | Search managers |
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
 | `blacksmith validate <path>` | Schema + ID allowlist check |
@@ -131,6 +132,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 Apply also supports `--prefer`, `--force`, and `--fail-fast`.
 Signature flags (with `--file` or `--url`): `--require-signature`, `--signature PATH|URL`, `--pubkey PATH`.
+Authors: `blacksmith sign path.yaml [--secret-key PATH] [-x out.minisig]` (requires `minisign` on PATH; optional - uses minisign's default secret key when `--secret-key` is omitted).
 Trust-scan flag: `--strict-trust` on `install` / `apply` / `validate` (fail closed on findings; remote `--url` always escalates).
 `--url` is mutually exclusive with `--file` and with a set name (install/apply) or local path (validate). HTTPS only.
 
