@@ -113,6 +113,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith install <set> --fail-fast` | Stop on first package failure |
 | `blacksmith install --file path.yaml --yes` | Install custom YAML ([untrusted](#trust)) |
 | `blacksmith install --file path.yaml --require-signature` | Require minisign verify before install |
+| `blacksmith install --file path.yaml --strict-trust` | Fail closed on trust-scan findings (local `--file` warns by default) |
 | `blacksmith install --url https://… --yes` | Install remote HTTPS set YAML ([untrusted](#trust); REMOTE) |
 | `blacksmith apply <set> --yes` | Ensure set state (idempotent; skip installed) |
 | `blacksmith apply <set> --dry-run` | Preview apply plan only |
@@ -130,6 +131,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 Apply also supports `--prefer`, `--force`, and `--fail-fast`.
 Signature flags (with `--file` or `--url`): `--require-signature`, `--signature PATH|URL`, `--pubkey PATH`.
+Trust-scan flag: `--strict-trust` on `install` / `apply` / `validate` (fail closed on findings; remote `--url` always escalates).
 `--url` is mutually exclusive with `--file` and with a set name (install/apply) or local path (validate). HTTPS only.
 
 **Apply exit codes:** `0` already compliant, `2` changed with no failures, `1` failures. Install stays `0`/`1`.
@@ -256,6 +258,13 @@ macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The 
 
 Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` or `--url` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`. Remote `--url` sets print a REMOTE banner with the final HTTPS URL and content SHA-256; signing remains opt-in via `--require-signature`.
 
+After a successful load of custom `--file` or remote `--url` YAML, Blacksmith runs an offline trust scan (size, denylist hits, manager mix, junk IDs, conflicting duplicates). Findings print as warnings. Local `--file` continues by default; pass `--strict-trust` to fail closed. Remote `--url` always fails closed when findings are present. Built-in set names are not scanned. The scan never claims a set is "safe" or "trusted" - it is not a malware scanner.
+
+```bash
+blacksmith install --file path/to/set.yaml --strict-trust --yes
+blacksmith validate path/to/set.yaml --strict-trust
+```
+
 ### Version pins (inline)
 
 Append `|version` to a manager package ID (the version segment must start with a digit):
@@ -293,7 +302,7 @@ Threat model, reporting vulnerabilities, and a safe review workflow: [SECURITY.m
 ```bash
 blacksmith validate path/to/set.yaml
 blacksmith install --file path/to/set.yaml --dry-run
-blacksmith install --file path/to/set.yaml --yes
+blacksmith install --file path/to/set.yaml --strict-trust --yes
 ```
 
 ## Troubleshooting
