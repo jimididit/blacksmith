@@ -20,9 +20,9 @@ Blacksmith installs software by invoking local package managers (`apt`, `winget`
 | Source | Guarantees | Does not guarantee |
 |--------|------------|--------------------|
 | Built-in sets | Schema validation; argv allowlist; managers run with `shell=False` | Upstream packages are benign, correctly named, or version-pinned |
-| Your own YAML | Same technical checks | Same - you own the IDs you write |
-| Third-party / shared `--file` YAML | Untrusted-source warning; non-interactive use requires `--yes` or `--dry-run`; allowlist blocks shell metacharacters and leading `-`; optional `--require-signature` verifies a detached minisign signature against bundled/user/`--pubkey` keys | Cryptographic authenticity unless `--require-signature` succeeds; live "does this package exist?" on every install; rollback after partial failure |
-| Remote `--url` HTTPS YAML | Same pipeline as `--file` after a temp fetch; HTTPS only (rejects `http://` and non-HTTPS redirects); blocks obvious SSRF literal hosts (localhost, loopback, link-local, RFC1918 literals); timeout and max body size fail closed; REMOTE banner with final URL + SHA-256; optional `--require-signature` with auto-try `{url}.minisig` or `--signature` path/HTTPS URL | That the remote host is trustworthy; DNS-rebinding / full SSRF hardening; mandatory signatures for remote sets (planned as L4.2 `--allow-unsigned` policy); persistent cache of fetched YAML |
+| Your own YAML | Same technical checks; offline trust-scan warnings (optional `--strict-trust` fail-closed) | Same - you own the IDs you write; trust scan is not a malware or reputation check |
+| Third-party / shared `--file` YAML | Untrusted-source warning; non-interactive use requires `--yes` or `--dry-run`; allowlist blocks shell metacharacters and leading `-`; optional `--require-signature` verifies a detached minisign signature against bundled/user/`--pubkey` keys; offline trust-scan warnings (escalate with `--strict-trust`) | Cryptographic authenticity unless `--require-signature` succeeds; live "does this package exist?" on every install; rollback after partial failure; that packages are free of malware |
+| Remote `--url` HTTPS YAML | Same pipeline as `--file` after a temp fetch; HTTPS only (rejects `http://` and non-HTTPS redirects); blocks obvious SSRF literal hosts (localhost, loopback, link-local, RFC1918 literals); timeout and max body size fail closed; REMOTE banner with final URL + SHA-256; optional `--require-signature` with auto-try `{url}.minisig` or `--signature` path/HTTPS URL; trust-scan findings fail closed | That the remote host is trustworthy; DNS-rebinding / full SSRF hardening; mandatory signatures for remote sets (planned as L4.2 `--allow-unsigned` policy); persistent cache of fetched YAML; malware scanning of package contents |
 
 A valid-looking package ID still installs if the manager resolves it. Sharing a set shares a list of package-manager operands, not a verified supply chain.
 
@@ -34,11 +34,14 @@ Local `audit.jsonl` is a DFIR aid on the operator machine. It is not a tamper-ev
 
 ```bash
 blacksmith validate path/to/set.yaml
+blacksmith validate path/to/set.yaml --strict-trust
 blacksmith install --file path/to/set.yaml --dry-run
-blacksmith install --file path/to/set.yaml --yes
+blacksmith install --file path/to/set.yaml --strict-trust --yes
 ```
 
-Remote HTTPS sets use the same trust path after a one-shot fetch to a temp file (deleted when the command finishes). Prefer `blacksmith validate --url https://…` and `install --url … --dry-run` before `--yes`. A successful fetch does not mean the YAML is safe - treat it like `--file`. Future L4.2 may hard-gate unsigned remote sets; today signatures stay opt-in with `--require-signature`.
+The offline trust scan flags oversized sets, optional denylist hits (bundled denylist is empty; reserved for known-bad IDs), kitchen-sink manager mixes, junk-looking IDs, and conflicting duplicate names. It does **not** scan package binaries for malware, check upstream reputation, or prove a set is safe. Absence of findings is not a green light.
+
+Remote HTTPS sets use the same trust path after a one-shot fetch to a temp file (deleted when the command finishes). Prefer `blacksmith validate --url https://…` and `install --url … --dry-run` before `--yes`. A successful fetch does not mean the YAML is safe - treat it like `--file`. Remote `--url` fails closed when the trust scan reports findings (same as `--strict-trust` locally). Future L4.2 may hard-gate unsigned remote sets; today signatures stay opt-in with `--require-signature`.
 
 ## Supported versions
 

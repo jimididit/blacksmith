@@ -28,6 +28,7 @@ from blacksmith.package_managers.results import (
     PackageStatus,
 )
 from blacksmith.trust.fetch import FetchError, cleanup_fetched, fetch_set_url
+from blacksmith.trust.scan import scan_set
 from blacksmith.utils.logger import setup_logger
 from blacksmith.utils.os_detector import detect_os
 from blacksmith.utils.ui import (
@@ -959,6 +960,56 @@ def require_yes_for_json(command: str, assume_yes: bool, dry_run: bool) -> None:
     )
 
 
+def apply_trust_scan(
+    config: dict,
+    *,
+    command: str,
+    json_mode: bool,
+    strict_trust: bool,
+    remote: bool,
+) -> None:
+    """Run offline trust heuristics on custom/remote sets.
+
+    Always prints findings as warnings (never claims the set is safe). Fail closed
+    when there are findings and ``strict_trust`` or ``remote`` is set.
+    """
+    result = scan_set(config)
+    if result.ok:
+        return
+
+    from rich.markup import escape
+
+    # Human mode: print findings. JSON mode: keep stdout clean (findings land in
+    # the error envelope when escalate; warn-only JSON omits them by design).
+    if not json_mode:
+        for finding in result.findings:
+            # Escape attacker-controlled strings and bracketed codes so rich does
+            # not treat them as markup (MarkupError / stripped finding codes).
+            print_warning(
+                f"Trust scan {escape(f'[{finding.code}]')}: {escape(finding.message)}"
+            )
+
+    if not (strict_trust or remote):
+        return
+
+    reason = "--strict-trust" if strict_trust else "remote --url"
+    message = (
+        f"Trust scan failed with {len(result.findings)} finding(s); "
+        f"refusing to proceed ({reason})."
+    )
+    findings_data = {
+        "findings": [
+            {"code": f.code, "message": f.message} for f in result.findings
+        ]
+    }
+    if json_mode:
+        emit_json_run_error(
+            command, 1, "trust_scan_failed", message, data=findings_data
+        )
+    print_error(message)
+    sys.exit(1)
+
+
 def load_run_config(
     *,
     command: str,
@@ -969,6 +1020,7 @@ def load_run_config(
     signature_file: Optional[str],
     pubkey_file: Optional[str],
     config_url: Optional[str] = None,
+    strict_trust: bool = False,
 ):
     """Resolve the config for an install/apply run.
 
@@ -1022,6 +1074,18 @@ def load_run_config(
             print_error(message)
             sys.exit(1)
 
+        try:
+            apply_trust_scan(
+                config,
+                command=command,
+                json_mode=json_mode,
+                strict_trust=strict_trust,
+                remote=True,
+            )
+        except SystemExit:
+            cleanup_fetched(fetched)
+            raise
+
         source_label = f"{fetched.final_url} (sha256:{fetched.sha256[:12]}…)"
         return config, source_label, fetched.sha256, fetched
 
@@ -1047,6 +1111,13 @@ def load_run_config(
                 emit_json_run_error(command, 1, "invalid_config", message)
             print_error(message)
             sys.exit(1)
+        apply_trust_scan(
+            config,
+            command=command,
+            json_mode=json_mode,
+            strict_trust=strict_trust,
+            remote=False,
+        )
         return config, str(config_file), None, None
 
     if set_name:
@@ -1385,6 +1456,7 @@ def audit_cmd(ctx: click.Context, last_n: int):
 @click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file or --url (fail closed)")
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path or HTTPS URL (default: <file>.minisig or {url}.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
+@click.option("--strict-trust", is_flag=True, help="Fail closed when trust-scan findings are present (default: warn for local --file)")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 @click.pass_context
 def install(
@@ -1401,6 +1473,7 @@ def install(
     require_signature: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
+    strict_trust: bool,
     no_audit: bool,
 ):
     """Install tools from a pre-made set or custom config file."""
@@ -1432,6 +1505,7 @@ def install(
             signature_file=signature_file,
             pubkey_file=pubkey_file,
             config_url=config_url,
+            strict_trust=strict_trust,
         )
         if resolved is None:
             return
@@ -1492,6 +1566,7 @@ def install(
 @click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file or --url (fail closed)")
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path or HTTPS URL (default: <file>.minisig or {url}.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
+@click.option("--strict-trust", is_flag=True, help="Fail closed when trust-scan findings are present (default: warn for local --file)")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 @click.pass_context
 def apply(
@@ -1507,6 +1582,7 @@ def apply(
     require_signature: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
+    strict_trust: bool,
     no_audit: bool,
 ):
     """Ensure a set matches desired state (idempotent).
@@ -1542,6 +1618,7 @@ def apply(
             signature_file=signature_file,
             pubkey_file=pubkey_file,
             config_url=config_url,
+            strict_trust=strict_trust,
         )
         if resolved is None:
             return
@@ -1885,8 +1962,14 @@ def info(
 @cli.command()
 @click.argument("config_path", required=False, type=click.Path(exists=True))
 @click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
+@click.option("--strict-trust", is_flag=True, help="Fail closed when trust-scan findings are present (default: warn for local file)")
 @click.pass_context
-def validate(ctx: click.Context, config_path: Optional[str], config_url: Optional[str]):
+def validate(
+    ctx: click.Context,
+    config_path: Optional[str],
+    config_url: Optional[str],
+    strict_trust: bool,
+):
     """Validate a configuration file or remote HTTPS set YAML."""
     reject_json_if_unsupported(ctx, "validate")
     from blacksmith.config.parser import load_yaml
@@ -1907,6 +1990,13 @@ def validate(ctx: click.Context, config_path: Optional[str], config_url: Optiona
             data = load_yaml(str(fetched.path))
             label = f"{fetched.final_url} (sha256:{fetched.sha256[:12]}…)"
             if validate_and_report(data):
+                apply_trust_scan(
+                    data,
+                    command="validate",
+                    json_mode=False,
+                    strict_trust=strict_trust,
+                    remote=True,
+                )
                 print_success(f"Configuration file is valid: {label}")
                 print_info(f"Name: {data.get('name', 'Unnamed')}")
                 print_info(f"Packages: {len(data.get('packages', []))}")
@@ -1925,6 +2015,13 @@ def validate(ctx: click.Context, config_path: Optional[str], config_url: Optiona
     try:
         data = load_yaml(config_path)
         if validate_and_report(data):
+            apply_trust_scan(
+                data,
+                command="validate",
+                json_mode=False,
+                strict_trust=strict_trust,
+                remote=False,
+            )
             print_success(f"Configuration file is valid: {config_path}")
             print_info(f"Name: {data.get('name', 'Unnamed')}")
             print_info(f"Packages: {len(data.get('packages', []))}")
