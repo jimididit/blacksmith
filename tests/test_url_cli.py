@@ -1,5 +1,6 @@
 """CLI tests for install/apply/validate --url (L5.0)."""
 
+import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -163,3 +164,67 @@ def test_validate_url_and_path_mutual_exclusion(mock_fetch, tmp_path):
     assert result.exit_code == 2
     assert "exactly one" in result.output.lower()
     mock_fetch.assert_not_called()
+
+
+@patch("blacksmith.cli.cleanup_fetched")
+@patch("blacksmith.cli.install_packages")
+@patch("blacksmith.cli.load_custom_config")
+@patch("blacksmith.cli.fetch_set_url")
+def test_apply_url_dry_run_succeeds(
+    mock_fetch, mock_load, mock_install, mock_cleanup, tmp_path
+):
+    fetched = _fetched(tmp_path)
+    mock_fetch.return_value = fetched
+    mock_load.return_value = {"name": "remote", "packages": []}
+    mock_install.return_value = _ok_result()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["apply", "--url", "https://example.com/a.yaml", "--dry-run", "--yes"],
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_fetch.assert_called_once()
+    mock_load.assert_called_once_with(str(fetched.path))
+    mock_install.assert_called_once()
+    assert mock_install.call_args.kwargs["config_source"].startswith("https://")
+    mock_cleanup.assert_called_once_with(fetched)
+
+
+def test_install_url_http_json_invalid_url():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "install",
+            "--url",
+            "http://example.com/a.yaml",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 1
+    body = json.loads(result.stdout.strip())
+    assert body["ok"] is False
+    assert body["error"]["code"] == "invalid_url"
+    assert "HTTPS" in body["error"]["message"]
+
+
+def test_install_url_blocked_host_json_invalid_url():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "install",
+            "--url",
+            "https://127.0.0.1/a.yaml",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 1
+    body = json.loads(result.stdout.strip())
+    assert body["error"]["code"] == "invalid_url"

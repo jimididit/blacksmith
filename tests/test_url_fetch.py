@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from io import BytesIO
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,16 +22,18 @@ from blacksmith.trust.fetch import (
 
 class TestValidateHttpsUrl:
     def test_rejects_http(self):
-        with pytest.raises(FetchError):
+        with pytest.raises(FetchError) as excinfo:
             validate_https_url("http://example.com/set.yaml")
+        assert excinfo.value.code == "invalid_url"
 
     def test_rejects_empty(self):
         with pytest.raises(FetchError):
             validate_https_url("")
 
     def test_rejects_ftp(self):
-        with pytest.raises(FetchError):
+        with pytest.raises(FetchError) as excinfo:
             validate_https_url("ftp://example.com/set.yaml")
+        assert excinfo.value.code == "invalid_url"
 
     def test_accepts_https(self):
         assert validate_https_url("https://example.com/sets/lab.yaml") == (
@@ -108,8 +110,9 @@ class TestFetchSetUrl:
             )
 
     def test_rejects_blocked_initial_host(self):
-        with pytest.raises(FetchError, match="not allowed"):
+        with pytest.raises(FetchError, match="not allowed") as excinfo:
             fetch_set_url("https://127.0.0.1/set.yaml", fetch_sidecar=False)
+        assert excinfo.value.code == "invalid_url"
 
     @patch("blacksmith.trust.fetch.urlopen")
     def test_rejects_blocked_final_url_after_redirect(self, mock_urlopen):
@@ -118,8 +121,9 @@ class TestFetchSetUrl:
             body, "https://127.0.0.1/set.yaml"
         )
 
-        with pytest.raises(FetchError, match="not allowed"):
+        with pytest.raises(FetchError, match="not allowed") as excinfo:
             fetch_set_url("https://example.com/set.yaml", fetch_sidecar=False)
+        assert excinfo.value.code == "invalid_url"
 
     @patch("blacksmith.trust.fetch.urlopen")
     def test_redirect_to_http_raises(self, mock_urlopen):
@@ -160,9 +164,85 @@ class TestFetchSetUrl:
         finally:
             cleanup_fetched(fetched)
 
+    @patch("blacksmith.trust.fetch.urlopen")
+    def test_sidecar_500_soft_skips_when_optional(self, mock_urlopen):
+        from urllib.error import HTTPError
+
+        body = b"name: t\npackages: []\n"
+        final = "https://example.com/a.yaml"
+
+        def urlopen_side_effect(req, timeout=None):
+            url = req.full_url if hasattr(req, "full_url") else req.get_full_url()
+            if url == final:
+                return _mock_response(body, final)
+            if url == final + ".minisig":
+                raise HTTPError(url, 500, "Internal Server Error", {}, None)
+            raise AssertionError(f"unexpected url {url}")
+
+        mock_urlopen.side_effect = urlopen_side_effect
+
+        fetched = fetch_set_url(final, fetch_sidecar=True)
+        try:
+            assert fetched.signature_path is None
+            assert fetched.path.is_file()
+        finally:
+            cleanup_fetched(fetched)
+
+    @patch("blacksmith.trust.fetch.urlopen")
+    def test_local_signature_survives_cleanup(self, mock_urlopen, tmp_path):
+        body = b"name: t\npackages: []\n"
+        final = "https://example.com/a.yaml"
+        mock_urlopen.return_value = _mock_response(body, final)
+
+        user_sig = tmp_path / "user.minisig"
+        user_sig.write_bytes(b"untrusted-sig")
+
+        fetched = fetch_set_url(
+            final,
+            signature_url_or_path=str(user_sig),
+            fetch_sidecar=False,
+        )
+        assert fetched.signature_path == user_sig.resolve()
+        assert fetched.signature_is_temp is False
+
+        cleanup_fetched(fetched)
+
+        assert not fetched.path.exists()
+        assert user_sig.exists()
+
+    @patch("blacksmith.trust.fetch.urlopen")
+    def test_signature_failure_cleans_yaml_temp(self, mock_urlopen, tmp_path):
+        from urllib.error import HTTPError
+
+        body = b"name: t\npackages: []\n"
+        final = "https://example.com/a.yaml"
+        sig_url = "https://example.com/explicit.minisig"
+        before = set(Path(tempfile.gettempdir()).glob("tmp*.yaml"))
+
+        def urlopen_side_effect(req, timeout=None):
+            url = req.full_url if hasattr(req, "full_url") else req.get_full_url()
+            if url == final:
+                return _mock_response(body, final)
+            if url == sig_url:
+                raise HTTPError(url, 500, "Internal Server Error", {}, None)
+            raise AssertionError(f"unexpected url {url}")
+
+        mock_urlopen.side_effect = urlopen_side_effect
+
+        with pytest.raises(FetchError, match="HTTP 500"):
+            fetch_set_url(
+                final,
+                signature_url_or_path=sig_url,
+                fetch_sidecar=False,
+            )
+
+        after = set(Path(tempfile.gettempdir()).glob("tmp*.yaml"))
+        leaked = after - before
+        assert not leaked, f"YAML temp leaked: {leaked}"
+
 
 class TestCleanupFetched:
-    def test_removes_yaml_and_signature(self, tmp_path):
+    def test_removes_yaml_and_owned_signature(self, tmp_path):
         yaml_path = tmp_path / "set.yaml"
         sig_path = tmp_path / "set.yaml.minisig"
         yaml_path.write_bytes(b"yaml")
@@ -173,8 +253,27 @@ class TestCleanupFetched:
             final_url="https://example.com/a.yaml",
             sha256="abc",
             signature_path=sig_path,
+            signature_is_temp=True,
         )
         cleanup_fetched(fetched)
 
         assert not yaml_path.exists()
         assert not sig_path.exists()
+
+    def test_preserves_user_owned_signature(self, tmp_path):
+        yaml_path = tmp_path / "set.yaml"
+        sig_path = tmp_path / "user.minisig"
+        yaml_path.write_bytes(b"yaml")
+        sig_path.write_bytes(b"sig")
+
+        fetched = FetchedSet(
+            path=yaml_path,
+            final_url="https://example.com/a.yaml",
+            sha256="abc",
+            signature_path=sig_path,
+            signature_is_temp=False,
+        )
+        cleanup_fetched(fetched)
+
+        assert not yaml_path.exists()
+        assert sig_path.exists()

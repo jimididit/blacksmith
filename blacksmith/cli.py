@@ -985,7 +985,7 @@ def load_run_config(
             fetched = fetch_set_url(
                 config_url,
                 signature_url_or_path=signature_file,
-                fetch_sidecar=True,
+                fetch_sidecar=require_signature and not signature_file,
             )
         except FetchError as exc:
             code = getattr(exc, "code", None) or "fetch_failed"
