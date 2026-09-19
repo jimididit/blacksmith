@@ -1595,8 +1595,29 @@ def export(ctx: click.Context, set_name: Optional[str], config_file: Optional[st
 @cli.command()
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", type=click.Path(exists=True), help="Path to custom config file")
+@click.option(
+    "--limit",
+    "-l",
+    "package_limit",
+    type=int,
+    default=0,
+    show_default=True,
+    help="Max packages to list in human output (0 = all). Ignored for --json.",
+)
+@click.option(
+    "--pager/--no-pager",
+    default=True,
+    show_default=True,
+    help="Page long package lists in a TTY (human mode only).",
+)
 @click.pass_context
-def info(ctx: click.Context, set_name: Optional[str], config_file: Optional[str]):
+def info(
+    ctx: click.Context,
+    set_name: Optional[str],
+    config_file: Optional[str],
+    package_limit: int,
+    pager: bool,
+):
     """Show detailed information about a set."""
     from blacksmith.config.loader import load_set, load_custom_config
     from blacksmith.utils.os_detector import detect_os
@@ -1713,36 +1734,56 @@ def info(ctx: click.Context, set_name: Optional[str], config_file: Optional[str]
     if managers_supported:
         console.print(f"\n[bold]Supported Managers:[/bold] {', '.join(managers_supported)}")
     
-    # Package count
+    # Package list (full by default; --limit N truncates human output)
     packages = config.get("packages", [])
-    console.print(f"\n[bold]Packages:[/bold] {len(packages)}")
-    
-    # Show sample packages
+    total = len(packages)
+    console.print(f"\n[bold]Packages:[/bold] {total}")
+
     if packages:
-        console.print(f"\n[bold]Sample Packages:[/bold]")
-        try:
-            for pkg in packages[:5]:
+        if package_limit and package_limit > 0:
+            shown = packages[:package_limit]
+            truncated = total > len(shown)
+        else:
+            shown = packages
+            truncated = False
+
+        def _print_package_rows() -> None:
+            console.print(f"\n[bold]Package list:[/bold]")
+            for pkg in shown:
                 pkg_name = pkg.get("name", "Unknown")
-                managers_dict = pkg.get("managers", {})
+                managers_dict = pkg.get("managers", {}) or {}
                 if managers_dict:
-                    # Get manager names and ensure they're strings
                     manager_names = [str(m) for m in managers_dict.keys()]
-                    # Limit to first 3 managers for display
                     manager_display = manager_names[:3]
-                    manager_str = ', '.join(manager_display)
+                    manager_str = ", ".join(manager_display)
                     if len(manager_names) > 3:
-                        manager_str += '...'
-                    # Use console.print - ensure we're not accidentally invoking CLI
-                    console.print(f"  • {pkg_name} [dim]({manager_str})[/dim]")
+                        manager_str += "..."
+                    console.print(f"  - {pkg_name} [dim]({manager_str})[/dim]")
                 else:
-                    console.print(f"  • {pkg_name} [dim](no managers)[/dim]")
-            if len(packages) > 5:
-                console.print(f"  ... and {len(packages) - 5} more")
+                    console.print(f"  - {pkg_name} [dim](no managers)[/dim]")
+            if truncated:
+                remaining = total - len(shown)
+                console.print(
+                    f"  ... and {remaining} more "
+                    f"(omit --limit or use --limit 0 for the full list; "
+                    f"or blacksmith --json info …)"
+                )
+
+        use_pager = (
+            pager
+            and not truncated
+            and total > 20
+            and getattr(console, "is_terminal", True)
+        )
+        try:
+            if use_pager:
+                with console.pager(styles=True):
+                    _print_package_rows()
+            else:
+                _print_package_rows()
         except Exception as e:
-            # If there's an error, just skip the sample packages display
-            print_warning(f"Could not display sample packages: {e}")
+            print_warning(f"Could not display packages: {e}")
     
-    # Explicit return to prevent any issues
     return
 
 

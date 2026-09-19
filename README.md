@@ -106,7 +106,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 |---------|---------|
 | `blacksmith` | Interactive menu |
 | `blacksmith list` | List sets |
-| `blacksmith info <set>` | Set details |
+| `blacksmith info <set>` | Set details (full package list; `--limit N` to truncate; pager for long lists) |
 | `blacksmith install <set>` | Install a set |
 | `blacksmith install <set> --dry-run` | Preview plan only |
 | `blacksmith install <set> --yes` | Non-interactive (required without a TTY) |
