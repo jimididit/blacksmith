@@ -126,6 +126,8 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
 | `blacksmith validate <path>` | Schema + ID allowlist check |
 | `blacksmith validate --url https://…` | Same checks for a remote HTTPS set YAML |
+| `blacksmith gallery list [--refresh]` | Browse curated remote sets |
+| `blacksmith gallery install <id> --yes` | Install a gallery set through the remote URL trust path |
 | `blacksmith audit [--last N]` | Show recent local audit events (default 50) |
 | `blacksmith uninstall [--yes]` | Remove Blacksmith (uses pipx when detected) |
 
@@ -136,6 +138,8 @@ Remote `--url` also supports `--allow-unsigned` (accepts unsigned install/apply 
 Authors: `blacksmith sign path.yaml [--secret-key PATH] [-x out.minisig]` (requires `minisign` on PATH; optional - uses minisign's default secret key when `--secret-key` is omitted).
 Trust-scan flag: `--strict-trust` on `install` / `apply` / `validate` (fail closed on findings; remote `--url` always escalates).
 `--url` is mutually exclusive with `--file` and with a set name (install/apply) or local path (validate). HTTPS only.
+
+Gallery entries are curated pointers to remote set YAML and use the same trust and unsigned-set policy as `--url`. The bundled index is used by default; pass `--refresh` to fetch the latest index from GitHub and cache it in your user configuration directory.
 
 **Apply exit codes:** `0` already compliant, `2` changed with no failures, `1` failures. Install stays `0`/`1`.
 

@@ -79,6 +79,30 @@ def test_load_index_uses_bundled_when_no_cache(tmp_path, monkeypatch):
     assert isinstance(idx.entries, list)
 
 
+def test_bundled_seed_entries_are_valid_sets(tmp_path, monkeypatch):
+    from blacksmith.config.loader import load_custom_config
+    from blacksmith.config.validator import validate_config
+    from blacksmith.gallery.paths import bundled_index_path
+
+    monkeypatch.setattr(
+        "blacksmith.gallery.paths.user_config_dir",
+        lambda: tmp_path,
+    )
+    idx = load_index(refresh=False)
+    assert len(idx.entries) >= 3
+    ids = {entry.id for entry in idx.entries}
+    assert "dfir-triage" in ids
+    assert "web-assessment" in ids
+    assert "network-recon" in ids
+    for entry in idx.entries:
+        assert entry.url.startswith("https://")
+        local = bundled_index_path().parent / "sets" / f"{entry.id}.yaml"
+        assert local.is_file(), local
+        config = load_custom_config(str(local))
+        ok, error = validate_config(config)
+        assert ok, error
+
+
 def test_get_entry_unknown():
     idx = parse_index({"version": 1, "entries": []})
     with pytest.raises(GalleryError) as ei:
