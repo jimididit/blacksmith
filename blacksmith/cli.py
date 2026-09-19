@@ -27,6 +27,7 @@ from blacksmith.package_managers.results import (
     PackageOutcome,
     PackageStatus,
 )
+from blacksmith.trust.fetch import FetchError, cleanup_fetched, fetch_set_url
 from blacksmith.utils.logger import setup_logger
 from blacksmith.utils.os_detector import detect_os
 from blacksmith.utils.ui import (
@@ -310,10 +311,16 @@ def show_installation_summary(
 ):
     """Show what will be installed before confirmation."""
     if config_source:
-        print_warning(
-            "Installing from a custom config file. Treat third-party YAML as untrusted "
-            "until you have reviewed every package ID below."
-        )
+        if config_source.startswith("https://"):
+            print_warning(
+                "REMOTE set. Installing from a URL. Treat third-party YAML as untrusted "
+                "until you have reviewed every package ID below."
+            )
+        else:
+            print_warning(
+                "Installing from a custom config file. Treat third-party YAML as untrusted "
+                "until you have reviewed every package ID below."
+            )
         print_info(f"Config source: {config_source}")
         console.print()
     
@@ -861,6 +868,7 @@ def maybe_record_install_audit(
     config_source: Optional[str],
     dry_run: bool,
     no_audit: bool,
+    config_hash: Optional[str] = None,
 ) -> None:
     """Append audit lines for a finished install/apply run."""
     _record_audit_fail_open(
@@ -869,6 +877,7 @@ def maybe_record_install_audit(
         exit_code=exit_code,
         set_name=config.get("name") if config else None,
         config_path=config_source,
+        config_hash=config_hash,
         dry_run=dry_run,
         no_audit=no_audit,
     )
@@ -959,13 +968,62 @@ def load_run_config(
     require_signature: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
+    config_url: Optional[str] = None,
 ):
     """Resolve the config for an install/apply run.
 
-    Returns (config, config_source), or None when the user leaves the set menu.
-    Exits the process on load, signature, or missing-argument failures.
+    Returns (config, config_source, config_hash, fetched), or None when the user
+    leaves the set menu. ``fetched`` is a FetchedSet for --url (caller must
+    cleanup_fetched). Exits the process on load, signature, or missing-argument
+    failures.
     """
     from blacksmith.trust.verify import verify_set_signature
+
+    if config_url:
+        fetched = None
+        try:
+            fetched = fetch_set_url(
+                config_url,
+                signature_url_or_path=signature_file,
+                fetch_sidecar=True,
+            )
+        except FetchError as exc:
+            code = getattr(exc, "code", None) or "fetch_failed"
+            err_code = "invalid_url" if code == "invalid_url" else "fetch_failed"
+            message = str(exc)
+            if json_mode:
+                emit_json_run_error(command, 1, err_code, message)
+            print_error(message)
+            sys.exit(1)
+
+        if require_signature:
+            extras = [Path(pubkey_file)] if pubkey_file else None
+            verified = verify_set_signature(
+                fetched.path,
+                signature_path=fetched.signature_path,
+                extra_pubkeys=extras,
+            )
+            if not verified.ok:
+                cleanup_fetched(fetched)
+                if json_mode:
+                    emit_json_run_error(
+                        command, 1, "signature_failed", verified.message
+                    )
+                print_error(verified.message)
+                sys.exit(1)
+            print_info(verified.message)
+
+        config = load_custom_config(str(fetched.path))
+        if not config:
+            cleanup_fetched(fetched)
+            message = f"Failed to load config from URL: {fetched.final_url}"
+            if json_mode:
+                emit_json_run_error(command, 1, "invalid_config", message)
+            print_error(message)
+            sys.exit(1)
+
+        source_label = f"{fetched.final_url} (sha256:{fetched.sha256[:12]}…)"
+        return config, source_label, fetched.sha256, fetched
 
     if config_file:
         if require_signature:
@@ -989,7 +1047,7 @@ def load_run_config(
                 emit_json_run_error(command, 1, "invalid_config", message)
             print_error(message)
             sys.exit(1)
-        return config, str(config_file)
+        return config, str(config_file), None, None
 
     if set_name:
         config = load_set(set_name)
@@ -1000,14 +1058,15 @@ def load_run_config(
             print_error(message)
             print_info("Use 'blacksmith list' to see available sets.")
             sys.exit(1)
-        return config, None
+        return config, None, None, None
 
     if json_mode:
         emit_json_run_error(
             command,
             2,
             "needs_args",
-            f"'{command} --json' needs a set name or --file; the set menu is disabled.",
+            f"'{command} --json' needs a set name, --file, or --url; "
+            "the set menu is disabled.",
         )
     show_welcome()
     selected = show_sets_menu()
@@ -1017,7 +1076,7 @@ def load_run_config(
     if not config:
         print_error(f"Failed to load set: {selected}")
         sys.exit(1)
-    return config, None
+    return config, None, None, None
 
 
 def emit_json_run_result(
@@ -1316,14 +1375,15 @@ def audit_cmd(ctx: click.Context, last_n: int):
 @cli.command()
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", help="Path to custom config file")
+@click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
 @click.option("--skip-installed", "-s", is_flag=True, help="Skip already installed packages")
 @click.option("--prefer", "-p", "prefer_manager", help="Prefer specific package manager (overrides config)")
 @click.option("--force", is_flag=True, help="Force installation even if OS doesn't match target_os")
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts (required for non-interactive custom --file installs)")
 @click.option("--dry-run", is_flag=True, help="Show what would be installed without making changes")
 @click.option("--fail-fast", is_flag=True, help="Stop after the first install/update failure (default: continue best-effort)")
-@click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file (fail closed)")
-@click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
+@click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file or --url (fail closed)")
+@click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path or HTTPS URL (default: <file>.minisig or {url}.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 @click.pass_context
@@ -1331,6 +1391,7 @@ def install(
     ctx: click.Context,
     set_name: Optional[str],
     config_file: Optional[str],
+    config_url: Optional[str],
     skip_installed: bool,
     prefer_manager: Optional[str],
     force: bool,
@@ -1345,74 +1406,91 @@ def install(
     """Install tools from a pre-made set or custom config file."""
     json_mode = is_json_mode(ctx)
 
-    if require_signature and not config_file:
-        message = "--require-signature only applies with --file."
+    source_count = sum(bool(x) for x in (set_name, config_file, config_url))
+    if source_count > 1:
+        message = "Provide exactly one of: set name, --file, or --url."
+        if json_mode:
+            emit_json_run_error("install", 2, "needs_args", message)
+        print_error(message)
+        sys.exit(2)
+
+    if require_signature and not config_file and not config_url:
+        message = "--require-signature only applies with --file or --url."
         if json_mode:
             emit_json_run_error("install", 2, "needs_args", message)
         print_error(message)
         sys.exit(1)
 
-    resolved = load_run_config(
-        command="install",
-        json_mode=json_mode,
-        set_name=set_name,
-        config_file=config_file,
-        require_signature=require_signature,
-        signature_file=signature_file,
-        pubkey_file=pubkey_file,
-    )
-    if resolved is None:
-        return
-    config, config_source = resolved
+    fetched = None
+    try:
+        resolved = load_run_config(
+            command="install",
+            json_mode=json_mode,
+            set_name=set_name,
+            config_file=config_file,
+            require_signature=require_signature,
+            signature_file=signature_file,
+            pubkey_file=pubkey_file,
+            config_url=config_url,
+        )
+        if resolved is None:
+            return
+        config, config_source, config_hash, fetched = resolved
 
-    if json_mode:
-        require_yes_for_json("install", assume_yes, dry_run)
-        require_managers_for_json("install")
+        if json_mode:
+            require_yes_for_json("install", assume_yes, dry_run)
+            require_managers_for_json("install")
 
-    # Install packages
-    result = install_packages(
-        config,
-        skip_installed=skip_installed,
-        show_summary=not json_mode,
-        prefer_manager=prefer_manager,
-        force=force,
-        assume_yes=assume_yes,
-        dry_run=dry_run,
-        config_source=config_source,
-        fail_fast=fail_fast,
-    )
-    exit_code = result.exit_code_install()
-    maybe_record_install_audit(
-        command="install",
-        result=result,
-        exit_code=exit_code,
-        config=config,
-        config_source=config_source,
-        dry_run=dry_run,
-        no_audit=no_audit,
-    )
-    if json_mode:
-        emit_json_run_result(
+        # Install packages
+        result = install_packages(
+            config,
+            skip_installed=skip_installed,
+            show_summary=not json_mode,
+            prefer_manager=prefer_manager,
+            force=force,
+            assume_yes=assume_yes,
+            dry_run=dry_run,
+            config_source=config_source,
+            fail_fast=fail_fast,
+        )
+        exit_code = result.exit_code_install()
+        audit_path = fetched.final_url if fetched is not None else config_source
+        maybe_record_install_audit(
             command="install",
             result=result,
             exit_code=exit_code,
             config=config,
-            config_source=config_source,
+            config_source=audit_path,
             dry_run=dry_run,
+            no_audit=no_audit,
+            config_hash=config_hash,
         )
-    sys.exit(exit_code)
+        if json_mode:
+            emit_json_run_result(
+                command="install",
+                result=result,
+                exit_code=exit_code,
+                config=config,
+                config_source=config_source,
+                dry_run=dry_run,
+            )
+        sys.exit(exit_code)
+    finally:
+        if fetched is not None:
+            cleanup_fetched(fetched)
 
 
 @cli.command()
 @click.argument("set_name", required=False)
 @click.option("--file", "-f", "config_file", help="Path to custom config file")
+@click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
 @click.option("--prefer", "-p", "prefer_manager", help="Prefer specific package manager (overrides config)")
 @click.option("--force", is_flag=True, help="Force apply even if OS doesn't match target_os")
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation prompts (required for non-interactive custom --file applies)")
 @click.option("--dry-run", is_flag=True, help="Show what would change without making changes")
 @click.option("--fail-fast", is_flag=True, help="Stop after the first install/verify failure (default: continue best-effort)")
-@click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file (fail closed)")
-@click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path (default: <file>.minisig)")
+@click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file or --url (fail closed)")
+@click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path or HTTPS URL (default: <file>.minisig or {url}.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--no-audit", is_flag=True, help="Do not write to the local audit log")
 @click.pass_context
@@ -1420,6 +1498,7 @@ def apply(
     ctx: click.Context,
     set_name: Optional[str],
     config_file: Optional[str],
+    config_url: Optional[str],
     prefer_manager: Optional[str],
     force: bool,
     assume_yes: bool,
@@ -1437,63 +1516,79 @@ def apply(
     """
     json_mode = is_json_mode(ctx)
 
-    if require_signature and not config_file:
-        message = "--require-signature only applies with --file."
+    source_count = sum(bool(x) for x in (set_name, config_file, config_url))
+    if source_count > 1:
+        message = "Provide exactly one of: set name, --file, or --url."
+        if json_mode:
+            emit_json_run_error("apply", 2, "needs_args", message)
+        print_error(message)
+        sys.exit(2)
+
+    if require_signature and not config_file and not config_url:
+        message = "--require-signature only applies with --file or --url."
         if json_mode:
             emit_json_run_error("apply", 2, "needs_args", message)
         print_error(message)
         sys.exit(1)
 
-    resolved = load_run_config(
-        command="apply",
-        json_mode=json_mode,
-        set_name=set_name,
-        config_file=config_file,
-        require_signature=require_signature,
-        signature_file=signature_file,
-        pubkey_file=pubkey_file,
-    )
-    if resolved is None:
-        return
-    config, config_source = resolved
+    fetched = None
+    try:
+        resolved = load_run_config(
+            command="apply",
+            json_mode=json_mode,
+            set_name=set_name,
+            config_file=config_file,
+            require_signature=require_signature,
+            signature_file=signature_file,
+            pubkey_file=pubkey_file,
+            config_url=config_url,
+        )
+        if resolved is None:
+            return
+        config, config_source, config_hash, fetched = resolved
 
-    if json_mode:
-        require_yes_for_json("apply", assume_yes, dry_run)
-        require_managers_for_json("apply")
+        if json_mode:
+            require_yes_for_json("apply", assume_yes, dry_run)
+            require_managers_for_json("apply")
 
-    result = install_packages(
-        config,
-        skip_installed=True,
-        show_summary=not json_mode,
-        prefer_manager=prefer_manager,
-        force=force,
-        assume_yes=assume_yes,
-        dry_run=dry_run,
-        config_source=config_source,
-        fail_fast=fail_fast,
-        apply_mode=True,
-    )
-    exit_code = result.exit_code_apply()
-    maybe_record_install_audit(
-        command="apply",
-        result=result,
-        exit_code=exit_code,
-        config=config,
-        config_source=config_source,
-        dry_run=dry_run,
-        no_audit=no_audit,
-    )
-    if json_mode:
-        emit_json_run_result(
+        result = install_packages(
+            config,
+            skip_installed=True,
+            show_summary=not json_mode,
+            prefer_manager=prefer_manager,
+            force=force,
+            assume_yes=assume_yes,
+            dry_run=dry_run,
+            config_source=config_source,
+            fail_fast=fail_fast,
+            apply_mode=True,
+        )
+        exit_code = result.exit_code_apply()
+        audit_path = fetched.final_url if fetched is not None else config_source
+        maybe_record_install_audit(
             command="apply",
             result=result,
             exit_code=exit_code,
             config=config,
-            config_source=config_source,
+            config_source=audit_path,
             dry_run=dry_run,
-            apply_ok_exits=True,
+            no_audit=no_audit,
+            config_hash=config_hash,
         )
-    sys.exit(exit_code)
+        if json_mode:
+            emit_json_run_result(
+                command="apply",
+                result=result,
+                exit_code=exit_code,
+                config=config,
+                config_source=config_source,
+                dry_run=dry_run,
+                apply_ok_exits=True,
+            )
+        sys.exit(exit_code)
+    finally:
+        if fetched is not None:
+            cleanup_fetched(fetched)
 
 
 @cli.command()

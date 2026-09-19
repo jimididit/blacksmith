@@ -122,7 +122,7 @@ def test_install_require_signature_without_file():
     runner = CliRunner()
     result = runner.invoke(cli, ["install", "minimal", "--require-signature"])
     assert result.exit_code == 1
-    assert "--require-signature only applies with --file" in result.output
+    assert "--require-signature only applies with --file or --url" in result.output
 
 
 @patch("blacksmith.cli.load_custom_config")
