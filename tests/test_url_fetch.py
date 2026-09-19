@@ -12,6 +12,7 @@ import pytest
 from blacksmith.trust.fetch import (
     FetchError,
     FetchedSet,
+    _HTTPSOnlyRedirectHandler,
     cleanup_fetched,
     fetch_set_url,
     is_blocked_host,
@@ -36,6 +37,15 @@ class TestValidateHttpsUrl:
         assert validate_https_url("https://example.com/sets/lab.yaml") == (
             "https://example.com/sets/lab.yaml"
         )
+
+
+class TestHTTPSOnlyRedirectHandler:
+    def test_rejects_redirect_to_blocked_host(self):
+        handler = _HTTPSOnlyRedirectHandler()
+        with pytest.raises(FetchError, match="not allowed"):
+            handler.redirect_request(
+                None, None, 302, "Found", {}, "https://10.0.0.1/set.yaml"
+            )
 
 
 class TestIsBlockedHost:
@@ -96,6 +106,20 @@ class TestFetchSetUrl:
                 fetch_sidecar=False,
                 max_bytes=5,
             )
+
+    def test_rejects_blocked_initial_host(self):
+        with pytest.raises(FetchError, match="not allowed"):
+            fetch_set_url("https://127.0.0.1/set.yaml", fetch_sidecar=False)
+
+    @patch("blacksmith.trust.fetch.urlopen")
+    def test_rejects_blocked_final_url_after_redirect(self, mock_urlopen):
+        body = b"name: lab\npackages: []\n"
+        mock_urlopen.return_value = _mock_response(
+            body, "https://127.0.0.1/set.yaml"
+        )
+
+        with pytest.raises(FetchError, match="not allowed"):
+            fetch_set_url("https://example.com/set.yaml", fetch_sidecar=False)
 
     @patch("blacksmith.trust.fetch.urlopen")
     def test_redirect_to_http_raises(self, mock_urlopen):

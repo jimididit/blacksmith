@@ -30,6 +30,10 @@ class FetchedSet:
 class FetchError(Exception):
     """User-facing fetch / URL validation failure."""
 
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 def validate_https_url(url: str) -> str:
     """Return normalized URL or raise FetchError."""
@@ -68,11 +72,23 @@ def is_blocked_host(hostname: str) -> bool:
     return False
 
 
+def _reject_blocked_url(url: str) -> None:
+    """Raise FetchError if URL is not HTTPS or host is blocked."""
+    validate_https_url(url)
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if is_blocked_host(host):
+        raise FetchError("URL host is not allowed")
+
+
 class _HTTPSOnlyRedirectHandler(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parsed = urlparse(newurl)
         if parsed.scheme.lower() != "https":
             raise FetchError("redirect to non-HTTPS URL rejected")
+        host = parsed.hostname or ""
+        if is_blocked_host(host):
+            raise FetchError("URL host is not allowed")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -105,23 +121,26 @@ def _fetch_bytes(
     max_bytes: int,
 ) -> Tuple[bytes, str, str]:
     """Return body, sha256 hex, final URL after redirects."""
-    validate_https_url(url)
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
-    if is_blocked_host(host):
-        raise FetchError("URL host is not allowed")
+    _reject_blocked_url(url)
 
     request = Request(url, headers={"User-Agent": "blacksmith/1.0"})
     try:
         with urlopen(request, timeout=timeout_s) as resp:
-            body, digest = _read_limited_response(resp, max_bytes)
             final_url = getattr(resp, "url", None) or url
+            _reject_blocked_url(final_url)
+            body, digest = _read_limited_response(resp, max_bytes)
             return body, digest, final_url
     except HTTPError as exc:
         location = exc.headers.get("Location") if exc.headers else None
-        if location and urlparse(location).scheme.lower() != "https":
-            raise FetchError("redirect to non-HTTPS URL rejected") from exc
-        raise FetchError(f"fetch failed: HTTP {exc.code}") from exc
+        if location:
+            loc_parsed = urlparse(location)
+            if loc_parsed.scheme.lower() != "https":
+                raise FetchError("redirect to non-HTTPS URL rejected") from exc
+            if is_blocked_host(loc_parsed.hostname or ""):
+                raise FetchError("URL host is not allowed") from exc
+        raise FetchError(
+            f"fetch failed: HTTP {exc.code}", code=f"http_{exc.code}"
+        ) from exc
     except FetchError:
         raise
     except URLError as exc:
@@ -171,7 +190,7 @@ def _maybe_fetch_signature(
             sidecar_url, timeout_s=timeout_s, max_bytes=max_bytes
         )
     except FetchError as exc:
-        if "HTTP 404" in str(exc):
+        if exc.code == "http_404":
             return None
         raise
     return _write_temp(body, ".minisig")
