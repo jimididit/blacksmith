@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-18
+
+Minor release: version pins, JSON output, install audit log, minisign set verification, and ASCII CLI status tags.
+
 ### Added
 
 - Inline package version pins: append `|version` to manager IDs (for example `apt: "nmap|7.94"`, `chocolatey: "git|2.40.0"`)
@@ -17,7 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - apt and yum/dnf pins must match the manager's native version format exactly (e.g., full dpkg Version or rpm VERSION-RELEASE)
   - brew pins install versioned formulae (e.g., `go@1.21`), not specific Cellar patch versions
   - winget pins parse the Version column from `winget list` output
-
 - Global `--json` for machine-readable output on `list`, `info`, `search`, `install`, and `apply`
 - Stable JSON envelope (`schema_version` 1): `command`, `ok`, `exit`, and either `data` or `error`
 - Unsupported commands and the bare interactive menu fail closed with `json_unsupported` (exit 2)
@@ -27,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--require-signature` for `install --file` / `apply --file` (minisign CLI verify)
 - Trusted keys: packaged `blacksmith/keys/*.pub`, user `trusted_keys/`, optional `--pubkey`
 - `--signature` override for detached `.minisig` path
+
+### Changed
+
+- CLI status lines use ASCII tags (`[OK]`, `[ERR]`, `[WARN]`, `[INFO]`) on all platforms; skip messages use `Skip:` word prefixes; OS badges are `Win` / `Lin` / `Mac` (no emoji)
 
 ## [0.4.1] - 2026-09-13
 
@@ -88,7 +95,7 @@ Security and install-reliability release (trust boundary + automation hardening)
 - Removed `shell=True` from Windows package-manager and uninstall pip paths
 - Flatpak remains a first-class Linux PM; sudo warning only for apt/pacman/yum/snap
 - Snap/Flatpak search documented as not implemented yet
-- GitHub Actions runtimes bumped to Node 24–compatible actions
+- GitHub Actions runtimes bumped to Node 24â€“compatible actions
 
 ### Security
 
@@ -132,7 +139,9 @@ First public release.
 - `info` argument parsing; create defaults; skip-manager flow
 - Winget search Unicode and older-client parsing
 
-[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.4.1...HEAD
+
+[Unreleased]: https://github.com/jimididit/blacksmith/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jimididit/blacksmith/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jimididit/blacksmith/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jimididit/blacksmith/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jimididit/blacksmith/compare/v0.2.3...v0.3.0

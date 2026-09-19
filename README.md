@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/jimididit/blacksmith/actions/workflows/ci.yml"><img src="https://github.com/jimididit/blacksmith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python 3.8+"></a>
-  <a href="https://github.com/jimididit/blacksmith/releases"><img src="https://img.shields.io/badge/version-0.4.1-blue.svg" alt="Version 0.4.1"></a>
+  <a href="https://github.com/jimididit/blacksmith/releases"><img src="https://img.shields.io/badge/version-0.5.0-blue.svg" alt="Version 0.5.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="Apache 2.0"></a>
   <a href="https://github.com/jimididit/blacksmith"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg" alt="Platform"></a>
 </p>
