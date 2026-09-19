@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -119,3 +118,77 @@ def test_refresh_writes_cache(tmp_path, monkeypatch):
     cache = tmp_path / "gallery" / "index.json"
     assert cache.is_file()
     assert "web-assess" in cache.read_text(encoding="utf-8")
+
+
+def test_refresh_fail_closed_preserves_cache_on_bad_remote(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "blacksmith.gallery.paths.user_config_dir",
+        lambda: tmp_path,
+    )
+    cache = tmp_path / "gallery" / "index.json"
+    cache.parent.mkdir(parents=True)
+    good_body = json.dumps(
+        {
+            "version": 1,
+            "entries": [
+                {
+                    "id": "cached-set",
+                    "title": "Cached",
+                    "description": "d",
+                    "url": "https://example.com/c.yaml",
+                    "os": ["linux"],
+                    "tags": [],
+                    "provenance": "official",
+                }
+            ],
+        }
+    )
+    cache.write_text(good_body, encoding="utf-8")
+    original = cache.read_text(encoding="utf-8")
+
+    with patch(
+        "blacksmith.gallery.index.fetch_https_bytes",
+        return_value=(b"not-json", "abc", "https://raw.githubusercontent.com/x"),
+    ):
+        with pytest.raises(GalleryError):
+            load_index(refresh=True)
+
+    assert cache.read_text(encoding="utf-8") == original
+
+
+def test_refresh_fail_closed_preserves_cache_on_schema_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "blacksmith.gallery.paths.user_config_dir",
+        lambda: tmp_path,
+    )
+    cache = tmp_path / "gallery" / "index.json"
+    cache.parent.mkdir(parents=True)
+    good_body = json.dumps({"version": 1, "entries": []})
+    cache.write_text(good_body, encoding="utf-8")
+    original = cache.read_text(encoding="utf-8")
+
+    bad_body = json.dumps(
+        {
+            "version": 1,
+            "entries": [
+                {
+                    "id": "INVALID ID",
+                    "title": "t",
+                    "description": "d",
+                    "url": "https://example.com/a.yaml",
+                    "os": [],
+                    "tags": [],
+                    "provenance": "official",
+                }
+            ],
+        }
+    ).encode("utf-8")
+
+    with patch(
+        "blacksmith.gallery.index.fetch_https_bytes",
+        return_value=(bad_body, "abc", "https://raw.githubusercontent.com/x"),
+    ):
+        with pytest.raises(GalleryError):
+            load_index(refresh=True)
+
+    assert cache.read_text(encoding="utf-8") == original
