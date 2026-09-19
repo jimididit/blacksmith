@@ -43,6 +43,8 @@ The offline trust scan flags oversized sets, optional denylist hits (bundled den
 
 Remote HTTPS sets use the same trust path after a one-shot fetch to a temp file (deleted when the command finishes). Prefer `blacksmith validate --url https://…` and `install --url … --dry-run` before `--yes`. A successful fetch does not mean the YAML is safe - treat it like `--file`. Remote `--url` fails closed when the trust scan reports findings (same as `--strict-trust` locally). Future L4.2 may hard-gate unsigned remote sets; today signatures stay opt-in with `--require-signature`.
 
+Authors who want to publish a detached signature can run `blacksmith sign path/to/set.yaml` (optional `--secret-key`; requires the `minisign` CLI on PATH). Signing proves set file provenance for operators who pass `--require-signature`; it does not make packages safe. minisign is not a required Blacksmith dependency.
+
 ## Supported versions
 
 Security fixes land on the latest released version on PyPI (`jdi-blacksmith`). Older versions are not backported unless noted in a release.

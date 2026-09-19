@@ -30,6 +30,7 @@ from blacksmith.package_managers.results import (
 )
 from blacksmith.trust.fetch import FetchError, cleanup_fetched, fetch_set_url
 from blacksmith.trust.scan import scan_set
+from blacksmith.trust.sign import sign_set
 from blacksmith.utils.logger import setup_logger
 from blacksmith.utils.os_detector import detect_os
 from blacksmith.utils.ui import (
@@ -2282,6 +2283,47 @@ def search(
             "Note: Snap/Flatpak search is not implemented; "
             f"skipped meaningful results for: {', '.join(searched_without_search)}"
         )
+
+
+@cli.command(
+    epilog=examples_epilog(
+        "blacksmith sign ./my-set.yaml",
+        "blacksmith sign ./my-set.yaml --secret-key ~/.minisign/minisign.key",
+        "blacksmith sign ./my-set.yaml -x ./my-set.yaml.minisig",
+    ),
+)
+@click.argument("config_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--secret-key",
+    "secret_key",
+    type=click.Path(exists=True, dir_okay=False),
+    help="minisign secret key path (default: minisign's default key file)",
+)
+@click.option(
+    "-x",
+    "--output",
+    "signature_file",
+    type=click.Path(dir_okay=False),
+    help="Detached signature output path (default: <file>.minisig)",
+)
+@click.pass_context
+def sign(
+    ctx: click.Context,
+    config_path: str,
+    secret_key: Optional[str],
+    signature_file: Optional[str],
+):
+    """Create a detached minisign signature for a set YAML file."""
+    reject_json_if_unsupported(ctx, "sign")
+    result = sign_set(
+        Path(config_path),
+        signature_path=Path(signature_file) if signature_file else None,
+        secret_key=Path(secret_key) if secret_key else None,
+    )
+    if not result.ok:
+        print_error(result.message)
+        sys.exit(1)
+    print_success(result.message)
 
 
 @cli.command(

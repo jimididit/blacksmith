@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `blacksmith sign <set.yaml>` - thin minisign wrapper to write a sibling `.minisig` (optional `--secret-key`, `-x` / `--output`; minisign remains an optional external CLI)
+
 ## [0.6.0] - 2026-09-18
 
 Minor release: remote set URLs, offline trust scan, fuller `info` listing, and help Examples.

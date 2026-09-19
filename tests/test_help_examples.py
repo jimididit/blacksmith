@@ -33,6 +33,7 @@ def test_examples_epilog_requires_lines():
         ["validate", "--help"],
         ["search", "--help"],
         ["create", "--help"],
+        ["sign", "--help"],
         ["uninstall", "--help"],
     ],
 )
