@@ -105,6 +105,24 @@ def test_record_audit_hashes_config_file(tmp_path, monkeypatch):
     assert run["config_hash"] == expected
 
 
+def test_record_audit_config_hash_override(tmp_path, monkeypatch):
+    log = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(
+        "blacksmith.audit.log.default_audit_log_path", lambda: log
+    )
+    digest = "ab" * 32
+    record_audit(
+        command="install",
+        outcomes=[PackageOutcome("git", "git", "apt", "install", PackageStatus.OK)],
+        exit_code=0,
+        config_path="https://example.com/set.yaml",
+        config_hash=digest,
+    )
+    run = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    assert run["config_path"] == "https://example.com/set.yaml"
+    assert run["config_hash"] == digest
+
+
 def test_record_audit_noop_when_all_skipped(tmp_path, monkeypatch):
     log = tmp_path / "audit.jsonl"
     monkeypatch.setattr(
@@ -276,6 +294,7 @@ def test_maybe_record_install_audit_forwards_fields():
     assert kwargs["config_path"] == "sets/minimal.yaml"
     assert kwargs["dry_run"] is False
     assert kwargs["no_audit"] is False
+    assert kwargs.get("config_hash") is None
     assert callable(kwargs["warn"])
 
 

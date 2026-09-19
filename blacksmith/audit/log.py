@@ -61,12 +61,17 @@ def record_audit(
     exit_code: int,
     set_name: Optional[str] = None,
     config_path: Optional[str] = None,
+    config_hash: Optional[str] = None,
     dry_run: bool = False,
     no_audit: bool = False,
     log_path: Optional[Path] = None,
     warn: Optional[Callable[[str], None]] = None,
 ) -> Optional[str]:
-    """Append run and package lines if warranted. Return run ID or None."""
+    """Append run and package lines if warranted. Return run ID or None.
+
+    When ``config_hash`` is provided (e.g. remote URL body digest), it is used
+    as-is instead of hashing ``config_path`` on disk.
+    """
     if dry_run or audit_disabled(no_audit):
         return None
     auditable = filter_auditable(outcomes)
@@ -80,7 +85,8 @@ def record_audit(
     try:
         path = log_path or default_audit_log_path()
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        config_hash = file_sha256(Path(config_path)) if config_path else None
+        if config_hash is None and config_path:
+            config_hash = file_sha256(Path(config_path))
 
         run_obj = {
             "type": "run",
