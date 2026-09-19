@@ -1766,7 +1766,7 @@ def info(
                 console.print(
                     f"  ... and {remaining} more "
                     f"(omit --limit or use --limit 0 for the full list; "
-                    f"or blacksmith --json info …)"
+                    f"or blacksmith --json info)"
                 )
 
         use_pager = (

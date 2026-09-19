@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from click.testing import CliRunner
 
 from blacksmith.cli import cli
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
 
 def _runner() -> CliRunner:
     return CliRunner()
+
+
+def _plain(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 def test_info_lists_all_packages(tmp_path: Path):
@@ -22,17 +29,18 @@ def test_info_lists_all_packages(tmp_path: Path):
     ]
     for i in range(8):
         lines.append(f'  - name: pkg{i}')
-        lines.append(f"    managers:")
+        lines.append("    managers:")
         lines.append(f'      apt: "pkg{i}"')
     cfg.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     result = _runner().invoke(cli, ["info", "--file", str(cfg), "--no-pager"])
     assert result.exit_code == 0, result.output
-    assert "Sample Packages" not in result.output
-    assert "Package list:" in result.output
+    out = _plain(result.output)
+    assert "Sample Packages" not in out
+    assert "Package list:" in out
     for i in range(8):
-        assert f"pkg{i}" in result.output
-    assert "and 3 more" not in result.output
+        assert f"pkg{i}" in out
+    assert "and 3 more" not in out
 
 
 def test_info_limit_truncates_with_hint(tmp_path: Path):
@@ -48,7 +56,8 @@ def test_info_limit_truncates_with_hint(tmp_path: Path):
         cli, ["info", "--file", str(cfg), "--limit", "3", "--no-pager"]
     )
     assert result.exit_code == 0, result.output
-    assert "pkg0" in result.output
-    assert "pkg2" in result.output
-    assert "pkg7" not in result.output
-    assert "and 5 more" in result.output
+    out = _plain(result.output)
+    assert "pkg0" in out
+    assert "pkg2" in out
+    assert "pkg7" not in out
+    assert "and 5 more" in out
