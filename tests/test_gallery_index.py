@@ -5,6 +5,7 @@ import pytest
 
 from blacksmith.gallery.index import get_entry, load_index, parse_index
 from blacksmith.gallery.schema import GalleryError
+from blacksmith.trust.fetch import FetchError
 
 
 def test_parse_index_minimal():
@@ -79,6 +80,23 @@ def test_load_index_uses_bundled_when_no_cache(tmp_path, monkeypatch):
     assert isinstance(idx.entries, list)
 
 
+def test_load_index_falls_back_to_bundled_on_invalid_utf8_cache(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "blacksmith.gallery.paths.user_config_dir",
+        lambda: tmp_path,
+    )
+    cache = tmp_path / "gallery" / "index.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(b"\xff")
+
+    idx = load_index(refresh=False)
+
+    assert idx.version == 1
+    assert "dfir-triage" in {entry.id for entry in idx.entries}
+
+
 def test_bundled_seed_entries_are_valid_sets(tmp_path, monkeypatch):
     from blacksmith.config.loader import load_custom_config
     from blacksmith.config.validator import validate_config
@@ -142,6 +160,44 @@ def test_refresh_writes_cache(tmp_path, monkeypatch):
     cache = tmp_path / "gallery" / "index.json"
     assert cache.is_file()
     assert "web-assess" in cache.read_text(encoding="utf-8")
+
+
+def test_refresh_wraps_fetch_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "blacksmith.gallery.paths.user_config_dir",
+        lambda: tmp_path,
+    )
+
+    with patch(
+        "blacksmith.gallery.index.fetch_https_bytes",
+        side_effect=FetchError("fetch timed out"),
+    ):
+        with pytest.raises(GalleryError) as exc_info:
+            load_index(refresh=True)
+
+    assert exc_info.value.code == "gallery_refresh_failed"
+    assert "fetch timed out" in str(exc_info.value)
+
+
+def test_refresh_preserves_cache_on_invalid_utf8(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "blacksmith.gallery.paths.user_config_dir",
+        lambda: tmp_path,
+    )
+    cache = tmp_path / "gallery" / "index.json"
+    cache.parent.mkdir(parents=True)
+    original = json.dumps({"version": 1, "entries": []})
+    cache.write_text(original, encoding="utf-8")
+
+    with patch(
+        "blacksmith.gallery.index.fetch_https_bytes",
+        return_value=(b"\xff", "abc", "https://raw.githubusercontent.com/x"),
+    ):
+        with pytest.raises(GalleryError) as exc_info:
+            load_index(refresh=True)
+
+    assert exc_info.value.code == "gallery_refresh_failed"
+    assert cache.read_text(encoding="utf-8") == original
 
 
 def test_refresh_fail_closed_preserves_cache_on_bad_remote(tmp_path, monkeypatch):

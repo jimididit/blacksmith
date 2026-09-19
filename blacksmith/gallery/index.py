@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from blacksmith.trust.fetch import fetch_https_bytes
+from blacksmith.trust.fetch import FetchError, fetch_https_bytes
 
 from blacksmith.gallery.paths import (
     DEFAULT_INDEX_URL,
@@ -26,7 +26,7 @@ parse_index = _parse_index
 def _read_index_file(path: Path) -> GalleryIndex:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise GalleryError(f"failed to read index: {path}") from exc
     if not isinstance(raw, dict):
         raise GalleryError("index must be a JSON object", code="invalid_schema")
@@ -53,11 +53,20 @@ def load_index(*, refresh: bool = False) -> GalleryIndex:
     cache = cached_index_path()
 
     if refresh:
-        body, _digest, _final_url = fetch_https_bytes(DEFAULT_INDEX_URL)
+        try:
+            body, _digest, _final_url = fetch_https_bytes(DEFAULT_INDEX_URL)
+        except FetchError as exc:
+            raise GalleryError(
+                f"failed to refresh gallery index: {exc}",
+                code="gallery_refresh_failed",
+            ) from exc
         try:
             raw: Any = json.loads(body.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise GalleryError("remote index is not valid JSON") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise GalleryError(
+                "failed to refresh gallery index: response is not valid UTF-8 JSON",
+                code="gallery_refresh_failed",
+            ) from exc
         if not isinstance(raw, dict):
             raise GalleryError("index must be a JSON object", code="invalid_schema")
         index = parse_index(raw)
@@ -65,7 +74,10 @@ def load_index(*, refresh: bool = False) -> GalleryIndex:
         return index
 
     if cache.is_file():
-        return _read_index_file(cache)
+        try:
+            return _read_index_file(cache)
+        except GalleryError:
+            return _read_index_file(bundled_index_path())
 
     return _read_index_file(bundled_index_path())
 

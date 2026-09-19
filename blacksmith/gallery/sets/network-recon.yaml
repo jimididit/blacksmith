@@ -1,7 +1,7 @@
 ---
 name: "Network Recon"
 description: "Small network discovery and connectivity toolkit"
-target_os: [windows, linux, macos]
+target_os: [windows, linux]
 packages:
   - name: nmap
     managers:

@@ -1,7 +1,7 @@
 ---
 name: "Web Assessment"
 description: "Core tools for web application security assessment"
-target_os: [windows, linux, macos]
+target_os: [windows, linux]
 packages:
   - name: nmap
     managers:

@@ -5,6 +5,7 @@ from click.testing import CliRunner
 
 from blacksmith.cli import cli
 from blacksmith.gallery.schema import GalleryEntry, GalleryIndex
+from blacksmith.trust.fetch import FetchError
 
 
 def _index_one():
@@ -49,6 +50,19 @@ def test_gallery_info_refresh(mock_load):
     result = runner.invoke(cli, ["gallery", "info", "dfir-triage", "--refresh"])
     assert result.exit_code == 0, result.output
     mock_load.assert_called_once_with(refresh=True)
+
+
+@patch(
+    "blacksmith.gallery.index.fetch_https_bytes",
+    side_effect=FetchError("fetch timed out"),
+)
+def test_gallery_refresh_failure_is_clean(mock_fetch):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["gallery", "list", "--refresh"])
+
+    assert result.exit_code == 1
+    assert "failed to refresh gallery index: fetch timed out" in result.output
+    assert "Traceback" not in result.output
 
 
 @patch("blacksmith.cli.load_index", return_value=_index_one())
