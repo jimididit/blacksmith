@@ -1,6 +1,7 @@
 """CLI tests for trust scan + --strict-trust (L4.4)."""
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -320,5 +321,7 @@ def test_finding_code_visible_in_human_output(mock_scan, mock_install):
         )
 
     assert result.exit_code == 0, result.output
-    assert "[oversized]" in result.output
-    assert "safe" not in result.output.lower()
+    # Rich may insert ANSI between brackets and the code on Windows.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "[oversized]" in plain
+    assert "safe" not in plain.lower()
