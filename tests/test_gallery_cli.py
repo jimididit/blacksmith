@@ -40,6 +40,15 @@ def test_gallery_info(mock_load):
     result = runner.invoke(cli, ["gallery", "info", "dfir-triage"])
     assert result.exit_code == 0
     assert "https://example.com/dfir.yaml" in result.output
+    mock_load.assert_called_once_with(refresh=False)
+
+
+@patch("blacksmith.cli.load_index", return_value=_index_one())
+def test_gallery_info_refresh(mock_load):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["gallery", "info", "dfir-triage", "--refresh"])
+    assert result.exit_code == 0, result.output
+    mock_load.assert_called_once_with(refresh=True)
 
 
 @patch("blacksmith.cli.load_index", return_value=_index_one())

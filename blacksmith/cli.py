@@ -1436,10 +1436,10 @@ def _gallery_entry_data(entry) -> dict:
     }
 
 
-def _load_gallery_entry(ctx: click.Context, entry_id: str):
+def _load_gallery_entry(ctx: click.Context, entry_id: str, *, refresh: bool = False):
     """Resolve a gallery entry and report stable CLI errors."""
     try:
-        return get_entry(load_index(refresh=False), entry_id)
+        return get_entry(load_index(refresh=refresh), entry_id)
     except GalleryError as exc:
         message = (
             f"Gallery entry '{entry_id}' not found."
@@ -1513,10 +1513,11 @@ def gallery_list(ctx: click.Context, refresh: bool):
 
 @gallery.command("info")
 @click.argument("entry_id")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
 @click.pass_context
-def gallery_info(ctx: click.Context, entry_id: str):
+def gallery_info(ctx: click.Context, entry_id: str, refresh: bool):
     """Show details for a gallery set."""
-    entry = _load_gallery_entry(ctx, entry_id)
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
     data = _gallery_entry_data(entry)
     if is_json_mode(ctx):
         emit_ok(command="gallery.info", exit_code=0, data=data)
@@ -1545,6 +1546,7 @@ def gallery_info(ctx: click.Context, entry_id: str):
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key")
 @click.option("--strict-trust", is_flag=True, help="Fail on trust-scan findings")
 @click.option("--no-audit", is_flag=True, help="Do not write to the audit log")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
 @click.pass_context
 def gallery_install(
     ctx: click.Context,
@@ -1560,9 +1562,10 @@ def gallery_install(
     pubkey_file: Optional[str],
     strict_trust: bool,
     no_audit: bool,
+    refresh: bool,
 ):
     """Install a set from the gallery."""
-    entry = _load_gallery_entry(ctx, entry_id)
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
     return ctx.invoke(
         install,
         set_name=None,
@@ -1595,6 +1598,7 @@ def gallery_install(
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key")
 @click.option("--strict-trust", is_flag=True, help="Fail on trust-scan findings")
 @click.option("--no-audit", is_flag=True, help="Do not write to the audit log")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
 @click.pass_context
 def gallery_apply(
     ctx: click.Context,
@@ -1609,9 +1613,10 @@ def gallery_apply(
     pubkey_file: Optional[str],
     strict_trust: bool,
     no_audit: bool,
+    refresh: bool,
 ):
     """Apply a gallery set as desired state."""
-    entry = _load_gallery_entry(ctx, entry_id)
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
     return ctx.invoke(
         apply,
         set_name=None,
@@ -1634,10 +1639,11 @@ def gallery_apply(
 @gallery.command("validate")
 @click.argument("entry_id")
 @click.option("--strict-trust", is_flag=True, help="Fail on trust-scan findings")
+@click.option("--refresh", is_flag=True, help="Refresh the cached gallery index")
 @click.pass_context
-def gallery_validate(ctx: click.Context, entry_id: str, strict_trust: bool):
+def gallery_validate(ctx: click.Context, entry_id: str, strict_trust: bool, refresh: bool):
     """Validate a gallery set."""
-    entry = _load_gallery_entry(ctx, entry_id)
+    entry = _load_gallery_entry(ctx, entry_id, refresh=refresh)
     return ctx.invoke(
         validate,
         config_path=None,
