@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `install` / `apply` / `validate --url https://…` for remote HTTPS set YAML (fetch to temp, existing `--file` trust path, REMOTE banner, content SHA-256; no persistent cache)
+- HTTPS-only fetch with SSRF literal-host blocks, timeout, and max body size; optional `{url}.minisig` sidecar or `--signature` path/URL with `--require-signature`
+
 ## [0.5.0] - 2026-09-18
 
 Minor release: version pins, JSON output, install audit log, minisign set verification, and ASCII CLI status tags.

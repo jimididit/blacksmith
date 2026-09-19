@@ -113,20 +113,24 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith install <set> --fail-fast` | Stop on first package failure |
 | `blacksmith install --file path.yaml --yes` | Install custom YAML ([untrusted](#trust)) |
 | `blacksmith install --file path.yaml --require-signature` | Require minisign verify before install |
+| `blacksmith install --url https://… --yes` | Install remote HTTPS set YAML ([untrusted](#trust); REMOTE) |
 | `blacksmith apply <set> --yes` | Ensure set state (idempotent; skip installed) |
 | `blacksmith apply <set> --dry-run` | Preview apply plan only |
 | `blacksmith apply --file path.yaml --yes` | Apply custom YAML ([untrusted](#trust)) |
 | `blacksmith apply --file path.yaml --require-signature` | Require minisign verify before apply |
+| `blacksmith apply --url https://… --yes` | Apply remote HTTPS set YAML ([untrusted](#trust); REMOTE) |
 | `blacksmith create` / `create --advanced` | Create a set |
 | `blacksmith search <query> [--manager name]` | Search managers |
 | `blacksmith export <set> --format <fmt>` | Export (`winget`, `chocolatey`, `apt`, `pacman`, `scoop`) |
 | `blacksmith validate <path>` | Schema + ID allowlist check |
+| `blacksmith validate --url https://…` | Same checks for a remote HTTPS set YAML |
 | `blacksmith audit [--last N]` | Show recent local audit events (default 50) |
 | `blacksmith uninstall [--yes]` | Remove Blacksmith (uses pipx when detected) |
 
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 Apply also supports `--prefer`, `--force`, and `--fail-fast`.
-Signature flags (with `--file`): `--require-signature`, `--signature PATH`, `--pubkey PATH`.
+Signature flags (with `--file` or `--url`): `--require-signature`, `--signature PATH|URL`, `--pubkey PATH`.
+`--url` is mutually exclusive with `--file` and with a set name (install/apply) or local path (validate). HTTPS only.
 
 **Apply exit codes:** `0` already compliant, `2` changed with no failures, `1` failures. Install stays `0`/`1`.
 
@@ -180,7 +184,7 @@ blacksmith --json install minimal --yes --dry-run | jq '.data.outcomes[] | selec
 blacksmith --json apply minimal --yes | jq '{ok, exit, changed: .data.summary.changed}'
 ```
 
-Mutating commands under `--json` require `--yes` or `--dry-run` (prompts are disabled). A set name or `--file` is also required; the interactive set menu is unavailable.
+Mutating commands under `--json` require `--yes` or `--dry-run` (prompts are disabled). A set name, `--file`, or `--url` is also required; the interactive set menu is unavailable.
 
 ```bash
 blacksmith --json install --file path/to/set.yaml --yes
@@ -234,7 +238,7 @@ packages:
 | `managers_supported` | no | Limit which managers are considered |
 | `packages` | yes | Manager IDs must pass the [argv allowlist](#trust) |
 
-Validate: `blacksmith validate path/to/config.yaml` (structure and allowlist only - not upstream existence).
+Validate: `blacksmith validate path/to/config.yaml` or `blacksmith validate --url https://example.com/set.yaml` (structure and allowlist only - not upstream existence).
 
 ## Package managers
 
@@ -250,7 +254,7 @@ macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The 
 
 ## Trust
 
-Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`.
+Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` or `--url` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`. Remote `--url` sets print a REMOTE banner with the final HTTPS URL and content SHA-256; signing remains opt-in via `--require-signature`.
 
 ### Version pins (inline)
 

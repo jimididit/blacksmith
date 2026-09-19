@@ -1883,13 +1883,45 @@ def info(
 
 
 @cli.command()
-@click.argument("config_path", type=click.Path(exists=True))
+@click.argument("config_path", required=False, type=click.Path(exists=True))
+@click.option("--url", "config_url", help="HTTPS URL of a remote set YAML")
 @click.pass_context
-def validate(ctx: click.Context, config_path: str):
-    """Validate a configuration file."""
+def validate(ctx: click.Context, config_path: Optional[str], config_url: Optional[str]):
+    """Validate a configuration file or remote HTTPS set YAML."""
     reject_json_if_unsupported(ctx, "validate")
     from blacksmith.config.parser import load_yaml
-    
+
+    source_count = sum(bool(x) for x in (config_path, config_url))
+    if source_count != 1:
+        print_error("Provide exactly one of: config path, or --url.")
+        sys.exit(2)
+
+    if config_url:
+        fetched = None
+        try:
+            try:
+                fetched = fetch_set_url(config_url, fetch_sidecar=False)
+            except FetchError as exc:
+                print_error(str(exc))
+                sys.exit(1)
+            data = load_yaml(str(fetched.path))
+            label = f"{fetched.final_url} (sha256:{fetched.sha256[:12]}…)"
+            if validate_and_report(data):
+                print_success(f"Configuration file is valid: {label}")
+                print_info(f"Name: {data.get('name', 'Unnamed')}")
+                print_info(f"Packages: {len(data.get('packages', []))}")
+            else:
+                sys.exit(1)
+        except SystemExit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to validate config: {e}")
+            sys.exit(1)
+        finally:
+            if fetched is not None:
+                cleanup_fetched(fetched)
+        return
+
     try:
         data = load_yaml(config_path)
         if validate_and_report(data):

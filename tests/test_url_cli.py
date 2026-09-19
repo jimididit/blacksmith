@@ -1,4 +1,4 @@
-"""CLI tests for install/apply --url (L5.0)."""
+"""CLI tests for install/apply/validate --url (L5.0)."""
 
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -128,3 +128,38 @@ def test_require_signature_without_file_or_url_updated_message():
     result = runner.invoke(cli, ["install", "minimal", "--require-signature"])
     assert result.exit_code == 1
     assert "--require-signature only applies with --file or --url" in result.output
+
+
+@patch("blacksmith.cli.cleanup_fetched")
+@patch("blacksmith.cli.fetch_set_url")
+def test_validate_url_succeeds(mock_fetch, mock_cleanup, tmp_path):
+    fetched = _fetched(tmp_path)
+    fetched.path.write_text(
+        "name: remote\npackages: []\n",
+        encoding="utf-8",
+    )
+    mock_fetch.return_value = fetched
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["validate", "--url", "https://example.com/a.yaml"])
+
+    assert result.exit_code == 0, result.output
+    assert "valid" in result.output.lower()
+    assert "https://example.com/a.yaml" in result.output
+    mock_fetch.assert_called_once()
+    assert mock_fetch.call_args.kwargs.get("fetch_sidecar") is False
+    mock_cleanup.assert_called_once_with(fetched)
+
+
+@patch("blacksmith.cli.fetch_set_url")
+def test_validate_url_and_path_mutual_exclusion(mock_fetch, tmp_path):
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("set.yaml").write_text("name: t\npackages: []\n", encoding="utf-8")
+        result = runner.invoke(
+            cli,
+            ["validate", "set.yaml", "--url", "https://example.com/a.yaml"],
+        )
+    assert result.exit_code == 2
+    assert "exactly one" in result.output.lower()
+    mock_fetch.assert_not_called()
