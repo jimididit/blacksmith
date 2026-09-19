@@ -1023,6 +1023,8 @@ def load_run_config(
     pubkey_file: Optional[str],
     config_url: Optional[str] = None,
     strict_trust: bool = False,
+    allow_unsigned: bool = False,
+    dry_run: bool = False,
 ):
     """Resolve the config for an install/apply run.
 
@@ -1033,13 +1035,21 @@ def load_run_config(
     """
     from blacksmith.trust.verify import verify_set_signature
 
+    unsigned_hint = (
+        "To proceed without a signature, re-run with --allow-unsigned "
+        "and accept the risk of installing an unsigned remote set."
+    )
+
     if config_url:
         fetched = None
+        # Mutating remote runs require a verified signature unless escaped or dry-run.
+        remote_needs_signature = (not dry_run) and (not allow_unsigned)
+        try_verify = require_signature or remote_needs_signature
         try:
             fetched = fetch_set_url(
                 config_url,
                 signature_url_or_path=signature_file,
-                fetch_sidecar=require_signature and not signature_file,
+                fetch_sidecar=try_verify and not signature_file,
             )
         except FetchError as exc:
             code = getattr(exc, "code", None) or "fetch_failed"
@@ -1050,7 +1060,14 @@ def load_run_config(
             print_error(message)
             sys.exit(1)
 
-        if require_signature:
+        if allow_unsigned and not require_signature:
+            if not json_mode:
+                print_warning(
+                    "REMOTE unsigned set: proceeding with --allow-unsigned. "
+                    "You accept the risk of installing YAML without a verified signature."
+                )
+
+        if try_verify:
             extras = [Path(pubkey_file)] if pubkey_file else None
             verified = verify_set_signature(
                 fetched.path,
@@ -1059,11 +1076,14 @@ def load_run_config(
             )
             if not verified.ok:
                 cleanup_fetched(fetched)
+                message = verified.message
+                err_code = "signature_failed"
+                if remote_needs_signature and not require_signature:
+                    message = f"{verified.message} {unsigned_hint}"
+                    err_code = "unsigned_remote"
                 if json_mode:
-                    emit_json_run_error(
-                        command, 1, "signature_failed", verified.message
-                    )
-                print_error(verified.message)
+                    emit_json_run_error(command, 1, err_code, message)
+                print_error(message)
                 sys.exit(1)
             print_info(verified.message)
 
@@ -1470,6 +1490,7 @@ def audit_cmd(ctx: click.Context, last_n: int):
         "blacksmith install minimal --yes",
         "blacksmith install --file ./my-set.yaml --yes --dry-run",
         "blacksmith install --url https://example.com/set.yaml --dry-run",
+        "blacksmith install --url https://example.com/set.yaml --allow-unsigned --yes",
         "blacksmith install --file ./my-set.yaml --require-signature --yes",
     ),
 )
@@ -1483,6 +1504,7 @@ def audit_cmd(ctx: click.Context, last_n: int):
 @click.option("--dry-run", is_flag=True, help="Show what would be installed without making changes")
 @click.option("--fail-fast", is_flag=True, help="Stop after the first install/update failure (default: continue best-effort)")
 @click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file or --url (fail closed)")
+@click.option("--allow-unsigned", is_flag=True, help="Allow unsigned remote --url sets (accepts risk; mutually exclusive with --require-signature)")
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path or HTTPS URL (default: <file>.minisig or {url}.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--strict-trust", is_flag=True, help="Fail closed when trust-scan findings are present (default: warn for local --file)")
@@ -1500,6 +1522,7 @@ def install(
     dry_run: bool,
     fail_fast: bool,
     require_signature: bool,
+    allow_unsigned: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
     strict_trust: bool,
@@ -1511,6 +1534,20 @@ def install(
     source_count = sum(bool(x) for x in (set_name, config_file, config_url))
     if source_count > 1:
         message = "Provide exactly one of: set name, --file, or --url."
+        if json_mode:
+            emit_json_run_error("install", 2, "needs_args", message)
+        print_error(message)
+        sys.exit(2)
+
+    if require_signature and allow_unsigned:
+        message = "--require-signature and --allow-unsigned are mutually exclusive."
+        if json_mode:
+            emit_json_run_error("install", 2, "needs_args", message)
+        print_error(message)
+        sys.exit(2)
+
+    if allow_unsigned and not config_url:
+        message = "--allow-unsigned only applies with --url."
         if json_mode:
             emit_json_run_error("install", 2, "needs_args", message)
         print_error(message)
@@ -1535,6 +1572,8 @@ def install(
             pubkey_file=pubkey_file,
             config_url=config_url,
             strict_trust=strict_trust,
+            allow_unsigned=allow_unsigned,
+            dry_run=dry_run,
         )
         if resolved is None:
             return
@@ -1588,6 +1627,7 @@ def install(
         "blacksmith apply minimal --yes",
         "blacksmith apply --file ./my-set.yaml --yes --dry-run",
         "blacksmith apply --url https://example.com/set.yaml --dry-run",
+        "blacksmith apply --url https://example.com/set.yaml --allow-unsigned --yes",
         "blacksmith apply --file ./my-set.yaml --strict-trust --yes",
     ),
 )
@@ -1600,6 +1640,7 @@ def install(
 @click.option("--dry-run", is_flag=True, help="Show what would change without making changes")
 @click.option("--fail-fast", is_flag=True, help="Stop after the first install/verify failure (default: continue best-effort)")
 @click.option("--require-signature", is_flag=True, help="Require a valid minisign signature for --file or --url (fail closed)")
+@click.option("--allow-unsigned", is_flag=True, help="Allow unsigned remote --url sets (accepts risk; mutually exclusive with --require-signature)")
 @click.option("--signature", "signature_file", type=click.Path(exists=False), help="Detached signature path or HTTPS URL (default: <file>.minisig or {url}.minisig)")
 @click.option("--pubkey", "pubkey_file", type=click.Path(exists=True), help="Extra minisign public key for this run")
 @click.option("--strict-trust", is_flag=True, help="Fail closed when trust-scan findings are present (default: warn for local --file)")
@@ -1616,6 +1657,7 @@ def apply(
     dry_run: bool,
     fail_fast: bool,
     require_signature: bool,
+    allow_unsigned: bool,
     signature_file: Optional[str],
     pubkey_file: Optional[str],
     strict_trust: bool,
@@ -1631,6 +1673,20 @@ def apply(
     source_count = sum(bool(x) for x in (set_name, config_file, config_url))
     if source_count > 1:
         message = "Provide exactly one of: set name, --file, or --url."
+        if json_mode:
+            emit_json_run_error("apply", 2, "needs_args", message)
+        print_error(message)
+        sys.exit(2)
+
+    if require_signature and allow_unsigned:
+        message = "--require-signature and --allow-unsigned are mutually exclusive."
+        if json_mode:
+            emit_json_run_error("apply", 2, "needs_args", message)
+        print_error(message)
+        sys.exit(2)
+
+    if allow_unsigned and not config_url:
+        message = "--allow-unsigned only applies with --url."
         if json_mode:
             emit_json_run_error("apply", 2, "needs_args", message)
         print_error(message)
@@ -1655,6 +1711,8 @@ def apply(
             pubkey_file=pubkey_file,
             config_url=config_url,
             strict_trust=strict_trust,
+            allow_unsigned=allow_unsigned,
+            dry_run=dry_run,
         )
         if resolved is None:
             return

@@ -114,12 +114,12 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 | `blacksmith install --file path.yaml --yes` | Install custom YAML ([untrusted](#trust)) |
 | `blacksmith install --file path.yaml --require-signature` | Require minisign verify before install |
 | `blacksmith install --file path.yaml --strict-trust` | Fail closed on trust-scan findings (local `--file` warns by default) |
-| `blacksmith install --url https://… --yes` | Install remote HTTPS set YAML ([untrusted](#trust); REMOTE) |
+| `blacksmith install --url https://… --yes` | Install remote HTTPS set YAML (requires signature unless `--allow-unsigned`; [untrusted](#trust); REMOTE) |
 | `blacksmith apply <set> --yes` | Ensure set state (idempotent; skip installed) |
 | `blacksmith apply <set> --dry-run` | Preview apply plan only |
 | `blacksmith apply --file path.yaml --yes` | Apply custom YAML ([untrusted](#trust)) |
 | `blacksmith apply --file path.yaml --require-signature` | Require minisign verify before apply |
-| `blacksmith apply --url https://… --yes` | Apply remote HTTPS set YAML ([untrusted](#trust); REMOTE) |
+| `blacksmith apply --url https://… --yes` | Apply remote HTTPS set YAML (requires signature unless `--allow-unsigned`; [untrusted](#trust); REMOTE) |
 | `blacksmith create` / `create --advanced` | Create a set |
 | `blacksmith sign <path.yaml>` | Create detached minisign signature (`<path>.minisig`) |
 | `blacksmith search <query> [--manager name]` | Search managers |
@@ -132,6 +132,7 @@ Custom YAML and create wizard: [Configuration](#configuration). Flags and policy
 Other install flags: `--skip-installed`, `--prefer <mgr>`, `--force` (ignore `target_os` mismatch).
 Apply also supports `--prefer`, `--force`, and `--fail-fast`.
 Signature flags (with `--file` or `--url`): `--require-signature`, `--signature PATH|URL`, `--pubkey PATH`.
+Remote `--url` also supports `--allow-unsigned` (accepts unsigned install/apply risk; mutually exclusive with `--require-signature`). Validate and `--dry-run` do not require a signature.
 Authors: `blacksmith sign path.yaml [--secret-key PATH] [-x out.minisig]` (requires `minisign` on PATH; optional - uses minisign's default secret key when `--secret-key` is omitted).
 Trust-scan flag: `--strict-trust` on `install` / `apply` / `validate` (fail closed on findings; remote `--url` always escalates).
 `--url` is mutually exclusive with `--file` and with a set name (install/apply) or local path (validate). HTTPS only.
@@ -258,7 +259,7 @@ macOS: Darwin is detected; Homebrew is registered when `brew` is on `PATH`. The 
 
 ## Trust
 
-Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` or `--url` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`. Remote `--url` sets print a REMOTE banner with the final HTTPS URL and content SHA-256; signing remains opt-in via `--require-signature`.
+Treat set YAML like code you are willing to run. Package ID allowlists block shell metacharacters; they do not prove packages are safe or exist upstream. Third-party `--file` or `--url` YAML is untrusted - review it, prefer `--dry-run`, then `--yes`. Remote `--url` sets print a REMOTE banner with the final HTTPS URL and content SHA-256. Mutating `install` / `apply --url` (not `--dry-run`) requires a verified minisign signature, or explicit `--allow-unsigned` (you accept the risk). Local `--file` signing stays opt-in via `--require-signature`.
 
 After a successful load of custom `--file` or remote `--url` YAML, Blacksmith runs an offline trust scan (size, optional/empty bundled denylist reserved for known-bad IDs, manager mix, junk IDs, conflicting duplicates). Findings print as warnings. Local `--file` continues by default; pass `--strict-trust` to fail closed. Remote `--url` always fails closed when findings are present. Built-in set names are not scanned. The scan never claims a set is "safe" or "trusted" - it is not a malware scanner.
 
@@ -295,9 +296,11 @@ Optional authenticity (minisign): authors sign with `minisign -Sm set.yaml` and 
 
 ```bash
 blacksmith install --file path/to/set.yaml --require-signature --yes
+blacksmith install --url https://example.com/set.yaml --yes
+blacksmith install --url https://example.com/set.yaml --allow-unsigned --yes
 ```
 
-Without `--require-signature`, unsigned `--file` behavior is unchanged. Requires the `minisign` CLI on PATH.
+Without `--require-signature`, unsigned `--file` behavior is unchanged. Remote `--url` installs/applies fail closed when unsigned unless you pass `--allow-unsigned`. Requires the `minisign` CLI on PATH for the signed path.
 
 Threat model, reporting vulnerabilities, and a safe review workflow: [SECURITY.md](SECURITY.md).
 

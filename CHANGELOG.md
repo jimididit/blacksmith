@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `blacksmith sign <set.yaml>` - thin minisign wrapper to write a sibling `.minisig` (optional `--secret-key`, `-x` / `--output`; minisign remains an optional external CLI)
+- Remote unsigned policy (L4.2): mutating `install` / `apply --url` fails closed without a verified signature unless `--allow-unsigned` (message names the risk); validate and `--dry-run` stay exempt; mutually exclusive with `--require-signature`
 
 ## [0.6.0] - 2026-09-18
 
